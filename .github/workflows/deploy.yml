@@ -1,0 +1,41 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          script: |
+            set -e
+            cd /home/${{ secrets.SSH_USERNAME }}/apps/back/marabucoo-back
+
+            echo "→ → Pull du code"
+            git pull origin main
+
+            echo "→ → Installation des dépendances"
+            npm install --production=false
+
+            echo "→ → Build TypeScript"
+            npx tsc
+
+            echo "→ → Prisma"
+            npx prisma db push --accept-data-loss
+            npx prisma generate
+
+            echo "→ → Redémarrage PM2"
+            pm2 describe marabucoo-back > /dev/null 2>&1 \
+            && pm2 restart marabucoo-back \
+            || pm2 start dist/index.js --name marabucoo-back
+
+            echo "✅ ✅Déploiement terminé"
