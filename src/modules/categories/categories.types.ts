@@ -5,7 +5,8 @@ export const CreateCategorySchema = z.object({
   slug: z.string().optional(),
   description: z.string().optional(),
   imageUrl: z.string().optional(),
-  parentId: z.string().optional(),
+  // null = catégorie de premier niveau (permet de détacher une sous-catégorie).
+  parentId: z.string().nullable().optional(),
   isActive: z.boolean().default(true),
   sortOrder: z.number().int().default(0),
 })
