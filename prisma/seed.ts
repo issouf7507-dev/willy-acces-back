@@ -140,6 +140,17 @@ async function seedAddresses(users: SeedUsers) {
 }
 
 // ─── Catégories ──────────────────────────────────────────────────────────────
+
+/** Sous-catégories d'accessoires. Les slugs reprennent `ACCESSORIES[].category`. */
+const ACCESSORY_SUBCATEGORIES = [
+  { name: 'Porte-clés', slug: 'porte-cles', sortOrder: 1 },
+  { name: 'Sangles', slug: 'sangles', sortOrder: 2 },
+  { name: 'Casquettes', slug: 'casquettes', sortOrder: 3 },
+  { name: 'Gourdes', slug: 'gourdes', sortOrder: 4 },
+  { name: 'Pochettes', slug: 'pochettes', sortOrder: 5 },
+  { name: 'Entretien', slug: 'entretien', sortOrder: 6 },
+]
+
 async function seedCategories() {
   const defs = [
     { name: 'Sacs', slug: 'sacs', sortOrder: 1 },
@@ -155,7 +166,19 @@ async function seedCategories() {
     })
     map[d.slug] = cat.id
   }
-  console.log(`✅ ${defs.length} catégories`)
+
+  // Sous-catégories d'accessoires : ce sont les onglets de la page /accessories,
+  // désormais de vraies catégories (et non plus une liste figée dans le front).
+  for (const s of ACCESSORY_SUBCATEGORIES) {
+    const cat = await prisma.category.upsert({
+      where: { slug: s.slug },
+      update: { name: s.name, parentId: map['accessoires'], sortOrder: s.sortOrder, isActive: true },
+      create: { ...s, parentId: map['accessoires'] },
+    })
+    map[s.slug] = cat.id
+  }
+
+  console.log(`✅ ${defs.length} catégories + ${ACCESSORY_SUBCATEGORIES.length} sous-catégories`)
   return map
 }
 
@@ -210,7 +233,8 @@ async function seedProducts(cats: Record<string, string>): Promise<SeedProduct[]
       compareAtPrice: a.compareAtPrice,
       stock: 30,
       currency: 'FCFA',
-      categoryId: cats['accessoires'],
+      // Rattaché à sa sous-catégorie (Porte-clés, Sangles…), pas au parent.
+      categoryId: cats[a.category] ?? cats['accessoires'],
       isActive: true,
       isFeatured: a.rating >= 4.6,
       tags: '',

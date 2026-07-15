@@ -10,6 +10,7 @@ import { apiLimiter } from "./middlewares/rateLimit.js";
 import { edgeStoreHandler } from "./lib/edgestore.js";
 
 import authRouter from "./modules/auth/auth.router.js";
+import usersRouter from "./modules/users/users.router.js";
 import productsRouter from "./modules/products/products.router.js";
 import categoriesRouter from "./modules/categories/categories.router.js";
 import ordersRouter from "./modules/orders/orders.router.js";
@@ -52,6 +53,7 @@ app.get("/health", (_req, res) => {
 app.use("/api", apiLimiter);
 
 app.use("/api/auth", authRouter);
+app.use("/api/users", usersRouter);
 app.use("/api/products", productsRouter);
 app.use("/api/categories", categoriesRouter);
 app.use("/api/orders", ordersRouter);

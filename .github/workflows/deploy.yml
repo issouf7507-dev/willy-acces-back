@@ -18,7 +18,7 @@ jobs:
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           script: |
             set -e
-            cd /home/${{ secrets.SSH_USERNAME }}/apps/back/marabucoo-back
+            cd /home/${{ secrets.SSH_USERNAME }}/apps/backend/willy-acces-back
 
             echo "→ → Pull du code"
             git pull origin main

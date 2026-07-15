@@ -22,6 +22,12 @@ Depuis la racine du projet :
 
 ## Lancer le seed
 
+> ⚠️ **Développement uniquement. Ne jamais lancer en production.**
+> Le seed commence par vider produits, commandes, coupons, devis, avis et
+> contenu (`cleanup()`), et recrée des comptes dont les mots de passe sont
+> écrits en clair plus bas — donc publics dans le dépôt Git.
+> En production, voir [Créer l'administrateur en production](#créer-ladministrateur-en-production).
+
 ```bash
 cd backend
 pnpm db:seed          # ou : ./node_modules/.bin/tsx prisma/seed.ts
@@ -29,6 +35,46 @@ pnpm db:seed          # ou : ./node_modules/.bin/tsx prisma/seed.ts
 
 Le seed est **idempotent** : il nettoie les données de test (dans l'ordre des
 dépendances FK) puis les recrée. Le compte **admin** est préservé.
+
+## Créer l'administrateur en production
+
+Le déploiement (`.github/workflows/deploy.yml`) ne lance pas le seed : une base
+de production fraîche n'a donc **aucun compte** et personne ne peut entrer dans
+le back-office. Créez le premier administrateur une seule fois, en SSH sur le
+serveur :
+
+```bash
+cd ~/apps/backend/willy-acces-back
+node --experimental-transform-types --disable-warning=ExperimentalWarning \
+  scripts/create-admin.ts
+```
+
+Le script demande l'email et le mot de passe (saisie masquée, donc absente de
+l'historique du shell). Il ne touche à aucune autre donnée, et ne fait rien s'il
+existe déjà un administrateur actif — le relancer sans risque est sans effet.
+
+Variante non interactive (provisioning) :
+
+```bash
+ADMIN_EMAIL=vous@domaine.com ADMIN_PASSWORD='…' ADMIN_NAME='Votre nom' \
+  node --experimental-transform-types --disable-warning=ExperimentalWarning \
+  scripts/create-admin.ts
+```
+
+Exigences : 12 caractères minimum, avec minuscules, majuscules et chiffres. Les
+mots de passe du jeu de test ci-dessous sont explicitement refusés.
+
+Mot de passe administrateur perdu :
+
+```bash
+node … scripts/create-admin.ts --reset-password   # + ADMIN_EMAIL
+```
+
+Il réinitialise le mot de passe, promeut le compte ADMIN si besoin et **révoque
+ses sessions ouvertes**.
+
+Ensuite, tous les autres comptes se créent depuis le back-office :
+**Configuration → Utilisateurs** (visible des ADMIN uniquement).
 
 ## Connexion base de données
 
@@ -43,6 +89,11 @@ DATABASE_URL="mysql://root:...@localhost:3306/willy_accesoire?allowPublicKeyRetr
 ```
 
 ## Comptes de test
+
+> Ces identifiants sont publics (ce fichier est versionné) : ils ne valent que
+> pour une base de développement locale. Si l'un d'eux existe en production,
+> c'est un accès ouvert à tous — changez-le immédiatement avec
+> `scripts/create-admin.ts --reset-password`.
 
 | Email                       | Mot de passe   | Rôle     |
 | --------------------------- | -------------- | -------- |

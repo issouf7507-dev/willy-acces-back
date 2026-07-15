@@ -44,7 +44,9 @@ export async function authenticate(
       return;
     }
 
-    req.user = { userId: payload.userId, role: payload.role };
+    // Le rôle vient de la base, pas du token : sinon un compte rétrogradé
+    // garderait ses anciens droits jusqu'à l'expiration de son JWT.
+    req.user = { userId: payload.userId, role: session.user.role };
     next();
   } catch {
     res.status(401).json({ success: false, error: "Token invalide" });

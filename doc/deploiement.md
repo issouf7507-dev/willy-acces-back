@@ -13,7 +13,7 @@ server {
 
     # Redirection HTTPS (après obtention du certificat, voir §2)
     location / {
-        proxy_pass         http://127.0.0.1:3001;
+        proxy_pass         http://127.0.0.1:4000;
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
@@ -89,3 +89,31 @@ cd /home/dev-issouf/apps/backend
 pm2 start dist/index.js --name backend
 pm2 save
 ```
+
+NODE_ENV=production
+PORT=4000
+
+# MySQL — format: mysql://user:password@host:port/database
+
+DATABASE_URL="mysql://ecom_user:0990@localhost:3306/willy_accesoire?allowPublicKeyRetrieval=true"
+
+# JWT
+
+JWT_SECRET="M8cTKREB84ziLLBNcmfjIXyojFyaLZtq8dCrLr0Qta2jNdhqcYHwM0n/Iw/68h/cV8roeyzO4JNAyrZgAEr1JQ=="
+JWT_EXPIRES_IN="7d"
+JWT_REFRESH_SECRET="aZALS3is7OE1/NmzP9RuPi2OhqhE7NcTNXjl9a5UbZPA9xa6pSl1rr/okCDTeR0LQwxXDAoxlp7Je9YSMbCwaw=="
+JWT_REFRESH_EXPIRES_IN="30d"
+
+# CORS
+
+ALLOWED_ORIGINS="http://localhost:5173,http://localhost:3000"
+
+# Store
+
+DEFAULT_CURRENCY="FCFA"
+STORE_NAME="Willy Accessoire"
+
+# EdgeStore — get your keys at https://edgestore.dev/dashboard
+
+EDGE_STORE_ACCESS_KEY=Y7fpTtZYtx7mI8XuliSuPUyPtrpJ30Bn
+EDGE_STORE_SECRET_KEY=EmrwsXY52Qv9Vd6ySWWzz4XB0HIomQ8YsuIcMrwrSdjv0pzj
