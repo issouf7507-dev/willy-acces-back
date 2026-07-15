@@ -24,15 +24,19 @@ jobs:
             echo "→ → Pull du code"
             git pull origin main
 
-            echo "→ → Installation des dépendances"
-            npm install --production=false
+            echo "→ → Activation de pnpm"
+            corepack enable
+            corepack prepare pnpm@latest --activate
 
-            echo "→ → Build TypeScript"
-            npx tsc
+            echo "→ → Installation des dépendances"
+            pnpm install --frozen-lockfile --prod=false
 
             echo "→ → Prisma"
-            npx prisma db push --accept-data-loss
-            npx prisma generate
+            pnpm exec prisma generate
+            pnpm exec prisma db push --accept-data-loss
+
+            echo "→ → Build TypeScript"
+            pnpm exec tsc
 
             echo "→ → Redémarrage PM2"
             pm2 describe marabucoo-back > /dev/null 2>&1 \
