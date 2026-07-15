@@ -25,8 +25,14 @@ jobs:
             git pull origin main
 
             echo "→ → Activation de pnpm"
-            corepack enable
+            export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+            export PATH="$HOME/.local/bin:$PATH"
+            if ! command -v pnpm > /dev/null 2>&1; then
+              mkdir -p "$HOME/.local/bin"
+              corepack enable --install-directory "$HOME/.local/bin"
+            fi
             corepack prepare pnpm@latest --activate
+            pnpm --version
 
             echo "→ → Installation des dépendances"
             pnpm install --frozen-lockfile --prod=false
