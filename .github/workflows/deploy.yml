@@ -16,6 +16,7 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{secrets.VPS_SSH_PORT}}
           script: |
             set -e
             cd /home/${{ secrets.SSH_USERNAME }}/apps/backend/willy-acces-back
