@@ -35,13 +35,11 @@ export async function addToCart(
   const variant = variantId ? product.variants.find((v) => v.id === variantId) : null
   const price = Number(variant?.price ?? product.price)
 
-  const existing = await prisma.cartItem.findUnique({
+  const existing = await prisma.cartItem.findFirst({
     where: {
-      cartId_productId_variantId: {
-        cartId: cart.id,
-        productId,
-        variantId: (variantId ?? null) as string,
-      },
+      cartId: cart.id,
+      productId,
+      variantId: variantId ?? null,
     },
   })
 
