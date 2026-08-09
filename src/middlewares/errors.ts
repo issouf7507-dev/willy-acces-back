@@ -36,6 +36,12 @@ export function errorHandler(
   }
 
   if (err instanceof ZodError) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error(
+        `[422] ${req.method} ${req.path}`,
+        JSON.stringify(err.flatten().fieldErrors),
+      );
+    }
     res.status(422).json({
       success: false,
       error: "Données invalides",

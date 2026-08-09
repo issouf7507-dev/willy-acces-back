@@ -16,6 +16,22 @@ export const authLimiter = rateLimit({
 })
 
 /**
+ * Dépôt d'avis depuis la boutique : route publique, sans compte.
+ * 5 avis / heure par IP, de quoi noter quelques produits sans permettre
+ * d'inonder la file de modération.
+ */
+export const reviewLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Vous avez déjà envoyé plusieurs avis. Merci de réessayer plus tard.',
+  },
+})
+
+/**
  * Limiteur global, appliqué à toute l'API.
  * Garde-fou raisonnable : 300 requêtes / minute par IP.
  */

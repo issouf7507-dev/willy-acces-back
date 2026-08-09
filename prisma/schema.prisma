@@ -394,8 +394,11 @@ model Payment {
 
 model Review {
   id         String   @id @default(cuid())
-  userId     String
+  /// Null pour un avis déposé depuis la boutique sans compte : c'est
+  /// `authorName` qui porte alors le nom saisi par le visiteur.
+  userId     String?
   productId  String
+  authorName String?
   rating     Int
   title      String?
   body       String?  @db.Text
@@ -403,10 +406,13 @@ model Review {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
+  // MySQL autorise plusieurs NULL : la contrainte ne vise que les avis de
+  // comptes (un seul avis par client et par produit).
   @@unique([userId, productId])
+  @@index([productId, isApproved])
   @@map("reviews")
 }
 
