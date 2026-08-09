@@ -8,17 +8,22 @@
  * Ce script, lui, ne touche à aucune autre donnée et refuse d'écraser un compte
  * existant sans demande explicite.
  *
+ * Lancer depuis `backend/` : le script lit le `.env` du dossier courant.
+ * Passe par tsx (comme `db:seed`) plutôt que par le strip-types natif de Node,
+ * qui exige Node >= 22.7 — le VPS de production tourne encore sous Node 20.
+ *
  *   # interactif : le mot de passe est demandé et n'apparaît ni à l'écran ni
  *   # dans l'historique du shell
- *   node --experimental-transform-types --disable-warning=ExperimentalWarning \
- *     scripts/create-admin.ts
+ *   pnpm run admin:create
  *
  *   # non interactif (CI, provisioning)
- *   ADMIN_EMAIL=… ADMIN_PASSWORD=… ADMIN_NAME=… node … scripts/create-admin.ts
+ *   ADMIN_EMAIL=… ADMIN_PASSWORD=… ADMIN_NAME=… pnpm run admin:create
  *
- * Options :
+ * Options (via pnpm, les séparer par `--`) :
  *   --reset-password   réinitialise le mot de passe d'un compte existant
  *                      (et le promeut ADMIN au besoin)
+ *
+ *   pnpm run admin:create -- --reset-password
  */
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
@@ -91,7 +96,7 @@ async function main() {
   });
   if (existingAdmins > 0 && !RESET) {
     console.log(
-      `ℹ️  ${existingAdmins} administrateur(s) actif(s) déjà présent(s) : rien à faire. fer`,
+      `ℹ️  ${existingAdmins} administrateur(s) actif(s) déjà présent(s) : rien à faire.`,
     );
     console.log("   Mot de passe oublié ? Relancez avec --reset-password.");
     return;
