@@ -39,6 +39,13 @@ jobs:
 
             echo "→ → Prisma"
             pnpm exec prisma generate
+
+            # `db push --accept-data-loss` supprime sans prévenir les colonnes
+            # retirées du schéma. Ce script sauvegarde la base et déplace les
+            # données concernées AVANT, et interrompt le déploiement s'il échoue.
+            echo "→ → Sauvegarde + reprise des données"
+            pnpm exec tsx scripts/pre-deploy.ts
+
             pnpm exec prisma db push --accept-data-loss
 
             echo "→ → Build TypeScript"

@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
 import { AppError } from '../../middlewares/errors.js'
 import type { CreateOrderInput, OrderQuery } from './orders.types.js'
+import { effectivePrice } from '../products/pricing.js'
 
 function generateOrderNumber(): string {
   const ts = Date.now().toString(36).toUpperCase()
@@ -72,7 +73,9 @@ export async function createOrder(input: CreateOrderInput, userId?: string) {
   const orderItems: Prisma.OrderItemUncheckedCreateWithoutOrderInput[] = input.items.map((item) => {
     const product = products.find((p) => p.id === item.productId)!
     const variant = item.variantId ? product.variants.find((v) => v.id === item.variantId) : null
-    const price = Number(variant?.price ?? product.price)
+    // Prix promo si la fenêtre est ouverte au moment de la commande — sinon on
+    // facturerait le prix normal pendant une promo en cours.
+    const price = Number(variant?.price ?? effectivePrice(product))
     const total = price * item.quantity
     subtotal += total
 

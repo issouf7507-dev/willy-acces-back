@@ -69,6 +69,13 @@ enum CampaignStatus {
   CANCELLED
 }
 
+enum PreorderStatus {
+  NEW
+  CONFIRMED
+  DELIVERED
+  CANCELLED
+}
+
 enum QuoteStatus {
   NEW
   IN_REVIEW
@@ -198,8 +205,17 @@ model Product {
   description      String?  @db.LongText
   shortDescription String?  @db.Text
   categoryId       String?
+  // Prix normal du produit. Jamais réécrit par le mécanisme de promotion :
+  // c'est lui qui s'affiche barré pendant une promo, et qui redevient seul
+  // prix affiché une fois la promo terminée.
   price            Decimal  @db.Decimal(12, 2)
-  compareAtPrice   Decimal? @db.Decimal(12, 2)
+  // Promotion planifiée : `promoPrice` s'applique entre `promoStartsAt` et
+  // `promoEndsAt`. Début vide = démarre immédiatement ; fin vide = sans
+  // échéance. Rien n'est modifié en base au fil du temps : la fenêtre s'ouvre
+  // et se referme d'elle-même (voir modules/products/promo.ts).
+  promoPrice       Decimal? @db.Decimal(12, 2)
+  promoStartsAt    DateTime?
+  promoEndsAt      DateTime?
   costPrice        Decimal? @db.Decimal(12, 2)
   sku              String?  @unique
   barcode          String?
@@ -211,7 +227,16 @@ model Product {
   isFeatured       Boolean  @default(false)
   isNew            Boolean  @default(false)
   isPreorder       Boolean  @default(false)
+  // Fenêtre de précommande : les commandes ouvrent à `preorderStartsAt` (vide =
+  // ouvertes immédiatement) et se ferment à `releaseDate`, qui est aussi la date
+  // de sortie annoncée. Passée cette date, le produit se vend normalement.
+  // Comme pour les promos, rien n'est réécrit en base : l'état se déduit de
+  // l'heure courante (voir modules/products/preorder.ts).
+  preorderStartsAt DateTime?
   releaseDate      DateTime?
+  // Prix appliqué pendant la précommande. Vide = c'est le prix normal qui
+  // s'applique. À la sortie, le prix normal reprend la main.
+  preorderPrice    Decimal? @db.Decimal(12, 2)
   tags             String?  @db.Text
   seoTitle         String?
   seoDescription   String?  @db.Text
@@ -231,6 +256,7 @@ model Product {
 
   couponProducts   CouponProduct[]
   campaignProducts CampaignProduct[]
+  preorderRequests PreorderRequest[]
 
   @@fulltext([name, description])
   @@map("products")
@@ -579,6 +605,37 @@ model SalonCatalogueImage {
 }
 
 // ─── Salon Quote Request (demande de devis) ──────────────────────────────────
+
+// ─── Précommandes ────────────────────────────────────────────────────────────
+
+/**
+ * Réservation d'un produit pas encore sorti. Volontairement séparée des
+ * commandes : aucun paiement, aucune adresse — le client est rappelé. Le prix
+ * et le nom du produit sont recopiés à la soumission pour que la demande reste
+ * lisible même si le produit change de tarif ou est supprimé ensuite.
+ */
+model PreorderRequest {
+  id          String         @id @default(cuid())
+  productId   String?
+  productName String
+  unitPrice   Decimal        @db.Decimal(12, 2)
+  releaseDate DateTime?
+  name        String
+  phone       String
+  email       String?
+  color       String?
+  quantity    Int            @default(1)
+  message     String?        @db.Text
+  status      PreorderStatus @default(NEW)
+  adminNote   String?        @db.Text
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@map("preorder_requests")
+}
 
 model QuoteRequest {
   id        String      @id @default(cuid())
