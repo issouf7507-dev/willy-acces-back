@@ -21,6 +21,7 @@ import inventoryRouter from "./modules/inventory/inventory.router.js";
 import settingsRouter from "./modules/settings/settings.router.js";
 import contentRouter from "./modules/content/content.router.js";
 import quotesRouter from "./modules/quotes/quotes.router.js";
+import preordersRouter from "./modules/preorders/preorders.router.js";
 
 const app = express();
 
@@ -64,6 +65,7 @@ app.use("/api/inventory", inventoryRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/content", contentRouter);
 app.use("/api/quotes", quotesRouter);
+app.use("/api/preorders", preordersRouter);
 
 app.use(notFound);
 app.use(errorHandler);

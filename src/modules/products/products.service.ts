@@ -2,6 +2,8 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
 import { AppError } from '../../middlewares/errors.js'
 import type { CreateProductInput, UpdateProductInput, ProductQuery } from './products.types.js'
+import { withPricing, type PricingFields } from './pricing.js'
+import { withPreorderState } from './preorder.js'
 
 function slugify(text: string): string {
   return text
@@ -77,14 +79,18 @@ const productSelect = {
   description: true,
   shortDescription: true,
   price: true,
-  compareAtPrice: true,
+  promoPrice: true,
+  promoStartsAt: true,
+  promoEndsAt: true,
   sku: true,
   stock: true,
   isActive: true,
   isFeatured: true,
   isNew: true,
   isPreorder: true,
+  preorderStartsAt: true,
   releaseDate: true,
+  preorderPrice: true,
   currency: true,
   metadata: true,
   trackInventory: true,
@@ -128,11 +134,15 @@ async function ratingsFor(productIds: string[]) {
   )
 }
 
-/** Ajoute `rating` / `reviewCount` à chaque produit renvoyé au client. */
-async function withRatings<T extends { id: string }>(products: T[]) {
+/**
+ * Ajoute `rating` / `reviewCount` à chaque produit, traduit la promo en couple
+ * `{ price, compareAtPrice }` attendu par la boutique et l'app mobile, et
+ * calcule l'état de précommande à l'instant présent.
+ */
+async function withRatings<T extends { id: string } & PricingFields>(products: T[]) {
   const ratings = await ratingsFor(products.map((p) => p.id))
   return products.map((p) => ({
-    ...p,
+    ...withPreorderState(withPricing(p)),
     rating: ratings.get(p.id)?.rating ?? 0,
     reviewCount: ratings.get(p.id)?.reviewCount ?? 0,
   }))
@@ -206,13 +216,14 @@ export async function createProduct(input: CreateProductInput) {
   for (let attempt = 0; ; attempt++) {
     const sku = providedSku ?? (await generateSku(data.categoryId, data.name))
     try {
-      return await prisma.product.create({
+      const created = await prisma.product.create({
         data: {
           ...data,
           slug,
           sku,
           price: data.price,
-          compareAtPrice: data.compareAtPrice,
+          promoPrice: data.promoPrice,
+          preorderPrice: data.preorderPrice,
           costPrice: data.costPrice,
           images: { create: images },
           variants: {
@@ -226,6 +237,9 @@ export async function createProduct(input: CreateProductInput) {
         },
         select: productSelect,
       })
+      // Même forme de réponse que les lectures : un client qui affiche
+      // directement le produit créé doit voir le prix promo, pas la ligne brute.
+      return withPreorderState(withPricing(created))
     } catch (err) {
       const isSkuConflict =
         err instanceof Prisma.PrismaClientKnownRequestError &&
@@ -271,7 +285,7 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
     select: productSelect,
   })
 
-  return product
+  return withPreorderState(withPricing(product))
 }
 
 export async function deleteProduct(id: string) {
@@ -320,8 +334,20 @@ export async function getNewArrivals(limit = 12) {
 }
 
 export async function getPreorders(limit = 12) {
+  const now = new Date()
+
   return withRatings(await prisma.product.findMany({
-    where: { isActive: true, isPreorder: true },
+    where: {
+      isActive: true,
+      isPreorder: true,
+      // Uniquement les précommandes réellement ouvertes : ni celles dont
+      // l'ouverture est encore à venir, ni celles dont la sortie est passée
+      // (le produit est alors redevenu un article normal du catalogue).
+      AND: [
+        { OR: [{ preorderStartsAt: null }, { preorderStartsAt: { lte: now } }] },
+        { OR: [{ releaseDate: null }, { releaseDate: { gt: now } }] },
+      ],
+    },
     select: productSelect,
     // Les sorties les plus proches d'abord ; releaseDate nulle en dernier
     orderBy: [{ releaseDate: 'asc' }, { createdAt: 'desc' }],

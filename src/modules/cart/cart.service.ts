@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma.js'
 import { AppError } from '../../middlewares/errors.js'
+import { effectivePrice } from '../products/pricing.js'
 
 async function getOrCreateCart(userId?: string, sessionId?: string) {
   if (!userId && !sessionId) throw new AppError('userId ou sessionId requis', 400)
@@ -33,7 +34,8 @@ export async function addToCart(
   if (!product || !product.isActive) throw new AppError('Produit introuvable', 404)
 
   const variant = variantId ? product.variants.find((v) => v.id === variantId) : null
-  const price = Number(variant?.price ?? product.price)
+  // Prix promo si la fenêtre est ouverte au moment de l'ajout au panier.
+  const price = Number(variant?.price ?? effectivePrice(product))
 
   const existing = await prisma.cartItem.findFirst({
     where: {

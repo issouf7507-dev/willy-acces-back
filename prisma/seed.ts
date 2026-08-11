@@ -182,6 +182,19 @@ async function seedCategories() {
   return map
 }
 
+/**
+ * Le jeu de données d'origine exprimait les remises par un prix barré
+ * (`price` = prix remisé, `compareAtPrice` = prix normal). Converti au modèle
+ * de promotion datée : `price` redevient le prix normal et la remise part dans
+ * une promo en cours, valable 30 jours.
+ */
+function pricing(price: number, compareAtPrice?: number) {
+  if (!compareAtPrice || compareAtPrice <= price) return { price }
+  const promoEndsAt = new Date()
+  promoEndsAt.setDate(promoEndsAt.getDate() + 30)
+  return { price: compareAtPrice, promoPrice: price, promoEndsAt }
+}
+
 // ─── Produits ────────────────────────────────────────────────────────────────
 async function seedProducts(cats: Record<string, string>): Promise<SeedProduct[]> {
   const products: SeedProduct[] = []
@@ -207,8 +220,7 @@ async function seedProducts(cats: Record<string, string>): Promise<SeedProduct[]
       name: b.name,
       slug: uniqueSlug(b.name, b.id),
       sku: `SAC-${sku++}`,
-      price: b.price,
-      compareAtPrice: b.compareAtPrice,
+      ...pricing(b.price, b.compareAtPrice),
       stock: b.inStock ? 25 : 0,
       currency: 'FCFA',
       categoryId: cats['sacs'],
@@ -229,8 +241,7 @@ async function seedProducts(cats: Record<string, string>): Promise<SeedProduct[]
       name: a.name,
       slug: uniqueSlug(a.name, a.id),
       sku: `ACC-${sku++}`,
-      price: a.price,
-      compareAtPrice: a.compareAtPrice,
+      ...pricing(a.price, a.compareAtPrice),
       stock: 30,
       currency: 'FCFA',
       // Rattaché à sa sous-catégorie (Porte-clés, Sangles…), pas au parent.
