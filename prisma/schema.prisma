@@ -238,6 +238,9 @@ model Product {
   // s'applique. À la sortie, le prix normal reprend la main.
   preorderPrice    Decimal? @db.Decimal(12, 2)
   tags             String?  @db.Text
+  // Lien vers une vidéo TikTok présentant le produit (facultatif). Affiché en
+  // fiche produit quand il est renseigné ; aucun embed, un simple lien sortant.
+  tiktokUrl        String?
   seoTitle         String?
   seoDescription   String?  @db.Text
   seoKeywords      String?  @db.Text
@@ -656,4 +659,21 @@ model QuoteRequest {
 
   @@index([status])
   @@map("quote_requests")
+}
+
+/// Inscrits à la communauté Willy : notifications, promotions et jeux.
+/// Le téléphone est la clé (WhatsApp = canal principal de la boutique), donc
+/// unique : une seconde inscription avec le même numéro met à jour la fiche
+/// au lieu de créer un doublon. L'e-mail reste facultatif.
+model Subscriber {
+  id        String   @id @default(cuid())
+  firstName String
+  lastName  String
+  phone     String   @unique
+  email     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+  @@map("subscribers")
 }

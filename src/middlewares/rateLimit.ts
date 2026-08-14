@@ -32,6 +32,22 @@ export const reviewLimiter = rateLimit({
 })
 
 /**
+ * Inscription à la communauté depuis la boutique : route publique, sans compte.
+ * 10 inscriptions / heure par IP — assez pour une famille ou un poste partagé
+ * en boutique, trop peu pour remplir la base de faux numéros.
+ */
+export const subscribeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Trop d’inscriptions depuis cet appareil. Merci de réessayer plus tard.',
+  },
+})
+
+/**
  * Limiteur global, appliqué à toute l'API.
  * Garde-fou raisonnable : 300 requêtes / minute par IP.
  */

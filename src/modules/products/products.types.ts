@@ -32,14 +32,14 @@ const ProductFieldsSchema = z.object({
   costPrice: z.number().positive().optional(),
   sku: z.string().optional(),
   barcode: z.string().optional(),
-  trackInventory: z.boolean().default(true),
-  stock: z.number().int().min(0).default(0),
-  lowStockAlert: z.number().int().min(0).default(5),
+  trackInventory: z.boolean(),
+  stock: z.number().int().min(0),
+  lowStockAlert: z.number().int().min(0),
   weight: z.number().positive().optional(),
-  isActive: z.boolean().default(true),
-  isFeatured: z.boolean().default(false),
-  isNew: z.boolean().default(false),
-  isPreorder: z.boolean().default(false),
+  isActive: z.boolean(),
+  isFeatured: z.boolean(),
+  isNew: z.boolean(),
+  isPreorder: z.boolean(),
   // Fenêtre de précommande. `releaseDate` en est la borne de fin : c'est aussi
   // la date de sortie affichée au client.
   preorderStartsAt: z.coerce.date().nullable().optional(),
@@ -48,13 +48,40 @@ const ProductFieldsSchema = z.object({
   // déjà pendant la période.
   preorderPrice: z.number().positive().nullable().optional(),
   tags: z.string().optional(),
+  // Vidéo TikTok du produit (facultative). Une chaîne vide vaut « pas de lien » :
+  // le back-office envoie le champ vidé tel quel plutôt que de l'omettre.
+  tiktokUrl: z
+    .union([z.url('Lien TikTok invalide'), z.literal('')])
+    .nullable()
+    .optional()
+    .transform((v) => (v ? v : null)),
   seoTitle: z.string().optional(),
   seoDescription: z.string().optional(),
   seoKeywords: z.string().optional(),
   metadata: z.record(z.string(), z.any()).optional(),
+  images: z.array(ProductImageSchema),
+  variants: z.array(ProductVariantSchema),
+})
+
+/**
+ * Valeurs par défaut d'un produit qui vient d'être créé. Elles sont volontairement
+ * tenues à l'écart de `ProductFieldsSchema` : `.partial()` ne retire pas un
+ * `.default()`, si bien qu'une mise à jour partielle se voyait injecter ces
+ * valeurs pour tous les champs absents du corps de la requête. Une simple bascule
+ * `PATCH { isActive }` depuis le back-office remettait ainsi le stock à 0 et
+ * supprimait toutes les images du produit.
+ */
+const PRODUCT_DEFAULTS = {
+  trackInventory: z.boolean().default(true),
+  stock: z.number().int().min(0).default(0),
+  lowStockAlert: z.number().int().min(0).default(5),
+  isActive: z.boolean().default(true),
+  isFeatured: z.boolean().default(false),
+  isNew: z.boolean().default(false),
+  isPreorder: z.boolean().default(false),
   images: z.array(ProductImageSchema).default([]),
   variants: z.array(ProductVariantSchema).default([]),
-})
+}
 
 /**
  * Cohérence de la promotion. Sur une mise à jour partielle, un champ absent
@@ -163,11 +190,16 @@ function preorderRule(
   }
 }
 
-export const CreateProductSchema = ProductFieldsSchema.superRefine((data, ctx) => {
+export const CreateProductSchema = ProductFieldsSchema.extend(PRODUCT_DEFAULTS).superRefine((data, ctx) => {
   promoRule(data, ctx)
   preorderRule(data, ctx)
 })
 
+/**
+ * Mise à jour partielle : un champ absent du corps doit rester tel qu'il est en
+ * base. C'est pour ça que la version « avec valeurs par défaut » n'est pas
+ * reprise ici — voir `PRODUCT_DEFAULTS`.
+ */
 export const UpdateProductSchema = ProductFieldsSchema.partial().superRefine((data, ctx) => {
   promoRule(data, ctx)
   preorderRule(data, ctx)
