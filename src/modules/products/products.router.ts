@@ -18,7 +18,11 @@ router.get('/', async (req, res, next) => {
 router.get('/featured', async (req, res, next) => {
   try {
     const limit = req.query.limit ? Number(req.query.limit) : 8
-    const products = await productsService.getFeatured(limit)
+    // `?preorder=true|false` sépare les deux vitrines de la page d'accueil ;
+    // absent, la sélection reste mélangée.
+    const preorder =
+      req.query.preorder === undefined ? undefined : req.query.preorder === 'true'
+    const products = await productsService.getFeatured(limit, preorder)
     res.json({ success: true, data: products })
   } catch (err) {
     next(err)

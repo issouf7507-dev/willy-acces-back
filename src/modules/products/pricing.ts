@@ -29,6 +29,13 @@ export function effectivePrice(p: PricingFields, now = new Date()): Prisma.Decim
  * le format que la boutique et l'app mobile consomment déjà : le prix applicable
  * devient `price`, et le prix normal passe en prix barré — mais seulement s'il
  * est plus élevé, sinon on afficherait une remise négative.
+ *
+ * `price` étant écrasé par le tarif du moment, le prix normal est republié tel
+ * quel dans `basePrice`. Sans lui, un client de l'API ne peut plus retrouver le
+ * prix de référence dès qu'une fenêtre est ouverte : le back-office rechargeait
+ * le prix promo/précommande dans le champ « Prix normal » et l'écrasait en base
+ * au premier enregistrement, et la boutique ne pouvait pas annoncer le prix qui
+ * reprendra la main à la sortie d'une précommande.
  */
 export function withPricing<T extends PricingFields>(product: T) {
   const price = effectivePrice(product)
@@ -37,6 +44,7 @@ export function withPricing<T extends PricingFields>(product: T) {
   return {
     ...product,
     price,
+    basePrice: product.price,
     compareAtPrice: discounted ? product.price : null,
     isPromoActive: isPromoActive(product),
   }

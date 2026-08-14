@@ -93,6 +93,7 @@ const productSelect = {
   preorderPrice: true,
   currency: true,
   metadata: true,
+  tiktokUrl: true,
   trackInventory: true,
   lowStockAlert: true,
   tags: true,
@@ -315,11 +316,47 @@ export async function updateStock(productId: string, quantity: number, note?: st
   return updated
 }
 
-export async function getFeatured(limit = 8) {
+/**
+ * Clause SQL des précommandes réellement ouvertes : commandes déjà ouvertes et
+ * sortie pas encore passée. Passée la date de sortie, le produit est redevenu un
+ * article normal du catalogue — c'est la même règle que `isPreorderActive`, mais
+ * exprimée en base pour pouvoir filtrer avant la pagination.
+ */
+function preorderWindow(now: Date): Prisma.ProductWhereInput {
+  return {
+    isPreorder: true,
+    AND: [
+      { OR: [{ preorderStartsAt: null }, { preorderStartsAt: { lte: now } }] },
+      { OR: [{ releaseDate: null }, { releaseDate: { gt: now } }] },
+    ],
+  }
+}
+
+/**
+ * Produits mis en avant. `preorder` sépare les deux vitrines de la page d'accueil :
+ * `false` pour la sélection ordinaire, `true` pour les précommandes. Le filtre
+ * porte sur la fenêtre de précommande et non sur le seul drapeau `isPreorder` :
+ * une précommande dont la sortie est passée revient dans la sélection ordinaire,
+ * puisqu'elle s'achète désormais normalement. Sans argument, les deux sont
+ * mélangées (comportement d'origine).
+ */
+export async function getFeatured(limit = 8, preorder?: boolean) {
+  const now = new Date()
+  const window = preorderWindow(now)
+
   return withRatings(await prisma.product.findMany({
-    where: { isActive: true, isFeatured: true },
+    where: {
+      isActive: true,
+      isFeatured: true,
+      ...(preorder === true && window),
+      ...(preorder === false && { NOT: window }),
+    },
     select: productSelect,
-    orderBy: { createdAt: 'desc' },
+    // Les précommandes se rangent par sortie la plus proche : c'est l'échéance
+    // qui fait l'intérêt de la vitrine.
+    orderBy: preorder === true
+      ? [{ releaseDate: 'asc' }, { createdAt: 'desc' }]
+      : { createdAt: 'desc' },
     take: limit,
   }))
 }
@@ -339,14 +376,10 @@ export async function getPreorders(limit = 12) {
   return withRatings(await prisma.product.findMany({
     where: {
       isActive: true,
-      isPreorder: true,
       // Uniquement les précommandes réellement ouvertes : ni celles dont
       // l'ouverture est encore à venir, ni celles dont la sortie est passée
       // (le produit est alors redevenu un article normal du catalogue).
-      AND: [
-        { OR: [{ preorderStartsAt: null }, { preorderStartsAt: { lte: now } }] },
-        { OR: [{ releaseDate: null }, { releaseDate: { gt: now } }] },
-      ],
+      ...preorderWindow(now),
     },
     select: productSelect,
     // Les sorties les plus proches d'abord ; releaseDate nulle en dernier
