@@ -83,6 +83,15 @@ function pruneBackups(dir: string) {
 
 // ─── 2. Reprises de données ──────────────────────────────────────────────────
 
+async function tableExists(table: string): Promise<boolean> {
+  const rows = await prisma.$queryRawUnsafe<unknown[]>(
+    `SELECT 1 FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+    table,
+  )
+  return rows.length > 0
+}
+
 async function columnExists(table: string, column: string): Promise<boolean> {
   const rows = await prisma.$queryRawUnsafe<unknown[]>(
     `SELECT 1 FROM information_schema.COLUMNS
@@ -137,12 +146,67 @@ async function migratePromoPrices() {
   }
 }
 
+/**
+ * Ancien modèle : une précommande portait un seul produit, à plat
+ * (`productName`, `unitPrice`, `color`, `quantity`…). Nouveau modèle : la
+ * demande ne garde que le client, et les produits vivent dans
+ * `preorder_request_items` — un client peut réserver plusieurs articles en une
+ * seule demande, avec un seul statut à suivre.
+ *
+ * `db push` créerait la table des lignes vide puis supprimerait les colonnes
+ * produit : toutes les précommandes déjà reçues perdraient ce qu'elles
+ * contiennent. On recopie donc chaque demande en une ligne avant.
+ */
+async function migratePreorderItems() {
+  if (!(await columnExists('preorder_requests', 'productName'))) {
+    log('précommandes', 'rien à faire (lignes déjà extraites)')
+    return
+  }
+
+  // `db push` créerait la table lui-même, mais trop tard : la reprise doit
+  // pouvoir écrire dedans avant que les colonnes source ne disparaissent.
+  if (!(await tableExists('preorder_request_items'))) {
+    await prisma.$executeRawUnsafe(
+      `CREATE TABLE \`preorder_request_items\` (
+         \`id\` VARCHAR(191) NOT NULL,
+         \`requestId\` VARCHAR(191) NOT NULL,
+         \`productId\` VARCHAR(191) NULL,
+         \`productName\` VARCHAR(191) NOT NULL,
+         \`unitPrice\` DECIMAL(12, 2) NOT NULL,
+         \`releaseDate\` DATETIME(3) NULL,
+         \`color\` VARCHAR(191) NULL,
+         \`quantity\` INTEGER NOT NULL DEFAULT 1,
+         INDEX \`preorder_request_items_requestId_idx\`(\`requestId\`),
+         INDEX \`preorder_request_items_productId_idx\`(\`productId\`),
+         PRIMARY KEY (\`id\`)
+       ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+    )
+    log('précommandes', 'table des lignes créée')
+  }
+
+  // `NOT EXISTS` rend la reprise rejouable : une demande déjà éclatée en
+  // lignes n'est pas recopiée une seconde fois.
+  const moved = await prisma.$executeRawUnsafe(
+    `INSERT INTO \`preorder_request_items\`
+       (\`id\`, \`requestId\`, \`productId\`, \`productName\`, \`unitPrice\`, \`releaseDate\`, \`color\`, \`quantity\`)
+     SELECT UUID(), r.\`id\`, r.\`productId\`, r.\`productName\`, r.\`unitPrice\`,
+            r.\`releaseDate\`, r.\`color\`, r.\`quantity\`
+     FROM \`preorder_requests\` r
+     WHERE NOT EXISTS (
+       SELECT 1 FROM \`preorder_request_items\` i WHERE i.\`requestId\` = r.\`id\`
+     )`,
+  )
+
+  log('précommandes', `${moved} demande(s) convertie(s) en lignes`)
+}
+
 // ─── Exécution ───────────────────────────────────────────────────────────────
 
 async function main() {
   const dir = backupDatabase()
   pruneBackups(dir)
   await migratePromoPrices()
+  await migratePreorderItems()
   log('terminé', 'la base peut être mise à jour sans perte')
 }
 

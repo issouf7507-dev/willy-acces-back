@@ -3,18 +3,21 @@ import { z } from 'zod'
 const STATUSES = ['NEW', 'CONFIRMED', 'DELIVERED', 'CANCELLED'] as const
 
 /**
- * Le client ne choisit ni le prix ni le produit par leur libellé : il envoie un
+ * Le client ne choisit ni le prix ni le produit par leur libellé : il envoie des
  * `productId`, et le serveur relit le nom, le prix applicable et la date de
  * sortie en base. Sinon n'importe qui pourrait précommander à son propre tarif.
  */
-export const CreatePreorderSchema = z.object({
+export const CreatePreorderItemSchema = z.object({
   productId: z.string().min(1, 'Produit requis'),
-  name: z.string().min(2, 'Nom requis'),
-  phone: z.string().min(6, 'Téléphone requis'),
-  email: z.email('Email invalide').optional().or(z.literal('')),
   color: z.string().max(60).optional(),
   quantity: z.coerce.number().int().min(1).max(50).default(1),
-  message: z.string().max(2000).optional(),
+})
+
+export const CreatePreorderSchema = z.object({
+  name: z.string().min(2, 'Nom requis'),
+  phone: z.string().min(6, 'Téléphone requis'),
+  deliveryPlace: z.string().min(2, 'Lieu de livraison requis').max(191),
+  items: z.array(CreatePreorderItemSchema).min(1, 'Au moins un produit').max(50),
 })
 
 export const UpdatePreorderSchema = z.object({
