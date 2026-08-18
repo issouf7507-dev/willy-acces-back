@@ -259,7 +259,7 @@ model Product {
 
   couponProducts   CouponProduct[]
   campaignProducts CampaignProduct[]
-  preorderRequests PreorderRequest[]
+  preorderItems    PreorderRequestItem[]
 
   @@fulltext([name, description])
   @@map("products")
@@ -618,26 +618,41 @@ model SalonCatalogueImage {
  * lisible même si le produit change de tarif ou est supprimé ensuite.
  */
 model PreorderRequest {
-  id          String         @id @default(cuid())
-  productId   String?
-  productName String
-  unitPrice   Decimal        @db.Decimal(12, 2)
-  releaseDate DateTime?
-  name        String
-  phone       String
-  email       String?
-  color       String?
-  quantity    Int            @default(1)
-  message     String?        @db.Text
-  status      PreorderStatus @default(NEW)
-  adminNote   String?        @db.Text
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id            String         @id @default(cuid())
+  name          String
+  phone         String
+  deliveryPlace String?
+  /// Conservés pour les demandes reçues avant le retrait de ces champs du formulaire.
+  email         String?
+  message       String?        @db.Text
+  status        PreorderStatus @default(NEW)
+  adminNote     String?        @db.Text
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
-  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  items PreorderRequestItem[]
 
   @@index([status])
   @@map("preorder_requests")
+}
+
+/// Une ligne de précommande. Nom, prix et date de sortie sont recopiés à la
+/// soumission : la demande reste lisible même si le produit change ou disparaît.
+model PreorderRequestItem {
+  id          String    @id @default(cuid())
+  requestId   String
+  productId   String?
+  productName String
+  unitPrice   Decimal   @db.Decimal(12, 2)
+  releaseDate DateTime?
+  color       String?
+  quantity    Int       @default(1)
+
+  request PreorderRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  product Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([requestId])
+  @@map("preorder_request_items")
 }
 
 model QuoteRequest {
