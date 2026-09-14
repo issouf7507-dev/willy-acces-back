@@ -15,7 +15,7 @@ router.get('/', async (req, res, next) => {
   }
 })
 
-router.put('/', authenticate, requireRole('ADMIN'), async (req, res, next) => {
+router.put('/', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const entries = Object.entries(req.body as Record<string, Prisma.InputJsonValue>)
     await prisma.$transaction(

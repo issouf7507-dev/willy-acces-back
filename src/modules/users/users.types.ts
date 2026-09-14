@@ -1,9 +1,9 @@
 import { z } from 'zod'
 
 /** Rôles donnant accès au back-office. CUSTOMER en est exclu. */
-export const STAFF_ROLES = ['ADMIN', 'MANAGER', 'STAFF'] as const
+export const STAFF_ROLES = ['SUPER_ADMIN', 'ADMIN', 'VENDEUR'] as const
 
-export const RoleSchema = z.enum(['ADMIN', 'MANAGER', 'STAFF', 'CUSTOMER'])
+export const RoleSchema = z.enum(['SUPER_ADMIN', 'ADMIN', 'VENDEUR', 'CUSTOMER'])
 
 export const CreateUserSchema = z.object({
   name: z.string().min(2),
@@ -13,6 +13,8 @@ export const CreateUserSchema = z.object({
   role: RoleSchema,
   phone: z.string().optional(),
   isActive: z.boolean().default(true),
+  /** Boutique de rattachement. `null` = aucun point de vente (siège, ADMIN). */
+  storeId: z.string().nullable().optional(),
 })
 
 export const UpdateUserSchema = z.object({
@@ -23,6 +25,7 @@ export const UpdateUserSchema = z.object({
   isActive: z.boolean().optional(),
   /** Réinitialisation : mot de passe remplacé s'il est fourni. */
   password: z.string().min(8).optional(),
+  storeId: z.string().nullable().optional(),
 })
 
 export const UserQuerySchema = z.object({

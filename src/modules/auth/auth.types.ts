@@ -16,6 +16,12 @@ export const RefreshSchema = z.object({
   refreshToken: z.string(),
 })
 
+/** Changement de son propre mot de passe, depuis un compte déjà connecté. */
+export const ChangePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8, 'Le nouveau mot de passe fait 8 caractères minimum'),
+})
+
 export const ForgotPasswordSchema = z.object({
   email: z.email(),
 })
@@ -25,5 +31,6 @@ export const ResetPasswordSchema = z.object({
   password: z.string().min(8),
 })
 
+export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>
 export type RegisterInput = z.infer<typeof RegisterSchema>
 export type LoginInput = z.infer<typeof LoginSchema>

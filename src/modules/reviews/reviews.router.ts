@@ -52,7 +52,7 @@ router.post('/public', reviewLimiter, async (req, res, next) => {
   }
 })
 
-router.get('/pending', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.get('/pending', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const reviews = await listPendingReviews()
     res.json({ success: true, data: reviews })
@@ -71,7 +71,7 @@ router.post('/', authenticate, async (req, res, next) => {
   }
 })
 
-router.patch('/:id/approve', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.patch('/:id/approve', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const review = await approveReview(String(req.params.id))
     res.json({ success: true, data: review })
@@ -82,7 +82,7 @@ router.patch('/:id/approve', authenticate, requireRole('ADMIN', 'MANAGER'), asyn
 
 router.delete('/:id', authenticate, async (req, res, next) => {
   try {
-    const isAdmin = ['ADMIN', 'MANAGER'].includes(req.user!.role)
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'VENDEUR'].includes(req.user!.role)
     await deleteReview(String(req.params.id), req.user!.userId, isAdmin)
     res.json({ success: true, data: null })
   } catch (err) {

@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken'
 import { prisma } from '../../lib/prisma.js'
 import { env } from '../../config/env.js'
 import { AppError } from '../../middlewares/errors.js'
-import type { LoginInput, RegisterInput } from './auth.types.js'
+import type { ChangePasswordInput, LoginInput, RegisterInput } from './auth.types.js'
 
 function signTokens(userId: string, role: string) {
   const accessToken = jwt.sign({ userId, role }, env.JWT_SECRET, {
@@ -46,7 +46,10 @@ export async function register(input: RegisterInput, userAgent?: string, ip?: st
 export async function login(input: LoginInput, userAgent?: string, ip?: string) {
   const user = await prisma.user.findUnique({
     where: { email: input.email },
-    select: { id: true, name: true, email: true, role: true, password: true, isActive: true },
+    select: {
+      id: true, name: true, email: true, role: true, storeId: true,
+      password: true, isActive: true,
+    },
   })
 
   if (!user || !(await bcrypt.compare(input.password, user.password))) {
@@ -72,10 +75,49 @@ export async function logout(token: string) {
   await prisma.session.deleteMany({ where: { token } })
 }
 
+/**
+ * Change son propre mot de passe.
+ *
+ * L'ancien est exigé : sans lui, un poste laissé ouvert suffirait à verrouiller
+ * le compte de quelqu'un d'autre. Les autres sessions tombent — un mot de passe
+ * changé doit déconnecter les appareils qu'on ne contrôle plus — mais celle en
+ * cours est conservée, sinon l'admin se ferait éjecter par sa propre action.
+ */
+export async function changePassword(
+  userId: string,
+  input: ChangePasswordInput,
+  currentToken?: string,
+) {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { password: true },
+  })
+
+  if (!(await bcrypt.compare(input.currentPassword, user.password))) {
+    throw new AppError('Mot de passe actuel incorrect', 400)
+  }
+  if (input.currentPassword === input.newPassword) {
+    throw new AppError('Le nouveau mot de passe doit être différent de l’ancien', 400)
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { password: await bcrypt.hash(input.newPassword, 12) },
+  })
+  await prisma.session.deleteMany({
+    where: { userId, ...(currentToken ? { token: { not: currentToken } } : {}) },
+  })
+}
+
 export async function getMe(userId: string) {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
-    select: { id: true, name: true, email: true, phone: true, role: true, createdAt: true },
+    select: {
+      id: true, name: true, email: true, phone: true, role: true,
+      // Le back-office en a besoin : une vendeuse ne travaille que sur sa boutique.
+      storeId: true,
+      createdAt: true,
+    },
   })
   return user
 }

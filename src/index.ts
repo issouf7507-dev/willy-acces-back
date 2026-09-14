@@ -23,6 +23,7 @@ import contentRouter from "./modules/content/content.router.js";
 import quotesRouter from "./modules/quotes/quotes.router.js";
 import preordersRouter from "./modules/preorders/preorders.router.js";
 import subscribersRouter from "./modules/subscribers/subscribers.router.js";
+import gestionRouter from "./modules/gestion/gestion.router.js";
 
 const app = express();
 
@@ -68,6 +69,7 @@ app.use("/api/content", contentRouter);
 app.use("/api/quotes", quotesRouter);
 app.use("/api/preorders", preordersRouter);
 app.use("/api/subscribers", subscribersRouter);
+app.use("/api/gestion", gestionRouter);
 
 app.use(notFound);
 app.use(errorHandler);

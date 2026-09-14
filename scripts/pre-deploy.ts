@@ -102,6 +102,17 @@ async function columnExists(table: string, column: string): Promise<boolean> {
   return rows.length > 0
 }
 
+async function indexExists(table: string, index: string): Promise<boolean> {
+  const rows = await prisma.$queryRawUnsafe<unknown[]>(
+    `SELECT 1 FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?
+     LIMIT 1`,
+    table,
+    index,
+  )
+  return rows.length > 0
+}
+
 /**
  * Ancien modèle : `price` portait le prix remisé et `compareAtPrice` le prix
  * normal barré. Nouveau modèle : `price` est le prix normal et la remise vit
@@ -200,11 +211,179 @@ async function migratePreorderItems() {
   log('précommandes', `${moved} demande(s) convertie(s) en lignes`)
 }
 
+/**
+ * Passage à trois rôles de back-office : SUPER_ADMIN, ADMIN, VENDEUR.
+ *
+ * `db push` se contenterait de resserrer l'énumération sur les nouvelles
+ * valeurs : MySQL tronquerait alors en chaîne vide tous les comptes restés en
+ * `STAFF` ou `MANAGER`, et il ne resterait plus **aucun** SUPER_ADMIN — donc
+ * plus personne pour clôturer un mois ni nommer un pair, le service interdisant
+ * à un ADMIN d'accorder ce rôle.
+ *
+ * On élargit donc l'énumération à l'union des anciennes et des nouvelles
+ * valeurs, on remappe, et `db push` n'a plus qu'à retirer les valeurs devenues
+ * inutilisées. Aucun compte n'est supprimé : chacun garde au minimum ce qu'il
+ * pouvait déjà faire.
+ */
+async function migrateRoles() {
+  const rows = await prisma.$queryRawUnsafe<{ COLUMN_TYPE: string }[]>(
+    `SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'role'`,
+  )
+  const columnType = rows[0]?.COLUMN_TYPE ?? ''
+
+  if (!columnType.includes("'STAFF'") && !columnType.includes("'MANAGER'")) {
+    log('rôles', 'rien à faire (déjà migrés)')
+    return
+  }
+
+  await prisma.$executeRawUnsafe(
+    "ALTER TABLE `users` MODIFY `role` " +
+      "ENUM('CUSTOMER', 'STAFF', 'MANAGER', 'ADMIN', 'VENDEUR', 'SUPER_ADMIN') " +
+      "NOT NULL DEFAULT 'CUSTOMER'",
+  )
+
+  // L'ordre compte : l'ancien ADMIN doit devenir SUPER_ADMIN avant que MANAGER
+  // ne prenne le nom d'ADMIN, sinon les deux populations se confondraient.
+  const owners = await prisma.$executeRawUnsafe(
+    "UPDATE `users` SET `role` = 'SUPER_ADMIN' WHERE `role` = 'ADMIN'",
+  )
+  const admins = await prisma.$executeRawUnsafe(
+    "UPDATE `users` SET `role` = 'ADMIN' WHERE `role` = 'MANAGER'",
+  )
+  const sellers = await prisma.$executeRawUnsafe(
+    "UPDATE `users` SET `role` = 'VENDEUR' WHERE `role` = 'STAFF'",
+  )
+
+  log('rôles', `${owners} ADMIN → SUPER_ADMIN, ${admins} MANAGER → ADMIN, ${sellers} STAFF → VENDEUR`)
+
+  // Un back-office sans super administrateur ne se répare pas depuis l'écran
+  // Utilisateurs : seul un SUPER_ADMIN peut accorder ce rôle.
+  const [{ n }] = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
+    "SELECT COUNT(*) AS n FROM `users` WHERE `role` = 'SUPER_ADMIN' AND `isActive` = 1",
+  )
+  if (Number(n) === 0) {
+    log('rôles', '⚠️  aucun SUPER_ADMIN actif — lancez `pnpm run admin:create` après le déploiement')
+  }
+}
+
+/**
+ * Passage au stock tenu par boutique.
+ *
+ * Deux choses que `db push` ne sait pas faire seul :
+ *
+ *   1. `shipment_items.storeId` arrive NOT NULL : posée d'emblée sur une table
+ *      qui contient déjà des lignes, la colonne ferait échouer l'ALTER. On
+ *      l'ajoute nullable et on la renseigne avant.
+ *   2. `store_stocks` doit être **remplie** dans la foulée de sa création. Une
+ *      table vide voudrait dire « zéro partout » : la caisse refuserait toutes
+ *      les ventes dès le redémarrage.
+ *
+ * La boutique qui reçoit le stock existant se choisit avec la variable
+ * d'environnement `INITIAL_STOCK_STORE` (son nom exact). Sans elle, on prend la
+ * boutique en ligne par défaut, puis la première dans l'ordre d'affichage. Ce
+ * qui se trouve ailleurs se régularise ensuite par un transfert.
+ */
+async function migrateStoreStock() {
+  if (!(await tableExists('stores'))) {
+    log('stock par boutique', 'rien à faire (boutiques pas encore installées)')
+    return
+  }
+
+  const wanted = process.env.INITIAL_STOCK_STORE?.trim()
+  const stores = await prisma.$queryRawUnsafe<{ id: string; name: string }[]>(
+    `SELECT \`id\`, \`name\` FROM \`stores\`
+     ORDER BY \`isDefaultOnline\` DESC, \`sortOrder\` ASC, \`name\` ASC`,
+  )
+  if (stores.length === 0) {
+    log('stock par boutique', 'rien à faire (aucune boutique enregistrée)')
+    return
+  }
+
+  const target = wanted ? stores.find((s) => s.name === wanted) : stores[0]
+  if (wanted && !target) {
+    throw new Error(
+      `INITIAL_STOCK_STORE = « ${wanted} » ne correspond à aucune boutique. ` +
+        `Boutiques connues : ${stores.map((s) => s.name).join(', ')}`,
+    )
+  }
+  const store = target!
+
+  // 1. La boutique de chaque ligne d'arrivage déjà saisie.
+  if (!(await columnExists('shipment_items', 'storeId'))) {
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE `shipment_items` ADD COLUMN `storeId` VARCHAR(191) NULL',
+    )
+    const filled = await prisma.$executeRawUnsafe(
+      'UPDATE `shipment_items` SET `storeId` = ? WHERE `storeId` IS NULL',
+      store.id,
+    )
+    log('stock par boutique', `${filled} ligne(s) d'arrivage rattachée(s) à « ${store.name} »`)
+  }
+
+  // 2. L'unicité des lignes d'arrivage, qui passe de (arrivage, produit) à
+  //    (arrivage, produit, boutique).
+  //
+  //    MySQL refuse de supprimer un index tant qu'une clé étrangère s'appuie
+  //    dessus — ici `shipmentId`. Le nouvel index commence par la même colonne :
+  //    créé d'abord, il prend le relais et l'ancien devient supprimable. On le
+  //    fait ici plutôt que de laisser `db push` s'y casser les dents en plein
+  //    déploiement.
+  if (!(await indexExists('shipment_items', 'shipment_items_shipmentId_productId_storeId_key'))) {
+    await prisma.$executeRawUnsafe(
+      'CREATE UNIQUE INDEX `shipment_items_shipmentId_productId_storeId_key` ' +
+        'ON `shipment_items`(`shipmentId`, `productId`, `storeId`)',
+    )
+    log('stock par boutique', 'index d’unicité par boutique créé')
+  }
+  if (await indexExists('shipment_items', 'shipment_items_shipmentId_productId_key')) {
+    await prisma.$executeRawUnsafe(
+      'DROP INDEX `shipment_items_shipmentId_productId_key` ON `shipment_items`',
+    )
+    log('stock par boutique', 'ancien index d’unicité retiré')
+  }
+
+  // 3. La répartition de départ.
+  if (!(await tableExists('store_stocks'))) {
+    await prisma.$executeRawUnsafe(
+      'CREATE TABLE `store_stocks` (' +
+        '`id` VARCHAR(191) NOT NULL,' +
+        '`productId` VARCHAR(191) NOT NULL,' +
+        '`storeId` VARCHAR(191) NOT NULL,' +
+        '`quantity` INTEGER NOT NULL DEFAULT 0,' +
+        '`updatedAt` DATETIME(3) NOT NULL,' +
+        'UNIQUE INDEX `store_stocks_productId_storeId_key`(`productId`, `storeId`),' +
+        'INDEX `store_stocks_storeId_idx`(`storeId`),' +
+        'PRIMARY KEY (`id`)' +
+        ') DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci',
+    )
+    log('stock par boutique', 'table du stock par boutique créée')
+  }
+
+  const [{ n }] = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
+    'SELECT COUNT(*) AS n FROM `store_stocks`',
+  )
+  if (Number(n) > 0) {
+    log('stock par boutique', 'rien à faire (répartition déjà en place)')
+    return
+  }
+
+  const moved = await prisma.$executeRawUnsafe(
+    'INSERT INTO `store_stocks` (`id`, `productId`, `storeId`, `quantity`, `updatedAt`) ' +
+      'SELECT UUID(), p.`id`, ?, p.`stock`, NOW(3) FROM `products` p WHERE p.`stock` > 0',
+    store.id,
+  )
+  log('stock par boutique', `${moved} produit(s) affecté(s) à « ${store.name} »`)
+  log('stock par boutique', 'régularisez ce qui est ailleurs depuis Gestion › Transferts')
+}
+
 // ─── Exécution ───────────────────────────────────────────────────────────────
 
 async function main() {
   const dir = backupDatabase()
   pruneBackups(dir)
+  await migrateRoles()
+  await migrateStoreStock()
   await migratePromoPrices()
   await migratePreorderItems()
   log('terminé', 'la base peut être mise à jour sans perte')

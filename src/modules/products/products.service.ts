@@ -206,7 +206,11 @@ export async function getProduct(idOrSlug: string) {
 export async function createProduct(input: CreateProductInput) {
   const slug = await ensureUniqueSlug(input.slug ?? slugify(input.name))
 
-  const { images, variants, ...data } = input
+  const { images, variants, stockStoreId, ...data } = input
+
+  // Un stock qui n'est nulle part n'est vendable nulle part : la caisse
+  // contrôle la boutique, pas le total.
+  const storeId = data.stock > 0 ? await resolveStockStore(stockStoreId, data.stock) : null
 
   // SKU laissé vide côté back-office → on le génère depuis la catégorie.
   const providedSku = data.sku?.trim() || undefined
@@ -238,6 +242,8 @@ export async function createProduct(input: CreateProductInput) {
         },
         select: productSelect,
       })
+      if (storeId) await allocateStock(created.id, storeId, data.stock, 'Stock initial')
+
       // Même forme de réponse que les lectures : un client qui affiche
       // directement le produit créé doit voir le prix promo, pas la ligne brute.
       return withPreorderState(withPricing(created))
@@ -256,10 +262,20 @@ export async function createProduct(input: CreateProductInput) {
   }
 }
 
-export async function updateProduct(id: string, input: UpdateProductInput) {
+export async function updateProduct(
+  id: string,
+  input: UpdateProductInput,
+  /** Qui modifie, pour tracer les changements de prix. */
+  actorId?: string,
+) {
   const current = await getProduct(id)
 
-  const { images, variants, slug, ...data } = input
+  const { images, variants, slug, stockStoreId, ...data } = input
+
+  // Le stock saisi est une valeur absolue : c'est l'écart avec l'existant qu'il
+  // faut porter sur une boutique.
+  const delta = data.stock === undefined ? 0 : data.stock - current.stock
+  const storeId = delta !== 0 ? await resolveStockStore(stockStoreId, delta) : null
 
   const resolvedSlug = slug ? await ensureUniqueSlug(slugify(slug), id) : undefined
 
@@ -286,7 +302,64 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
     select: productSelect,
   })
 
+  // `current` sort de `withPricing`, qui écrase `price` par le tarif du moment :
+  // c'est `basePrice` qui porte le prix normal réellement stocké.
+  const previousPrice = Number(current.basePrice)
+  if (data.price !== undefined && Number(data.price) !== previousPrice) {
+    await prisma.priceHistory.create({
+      data: {
+        productId: id,
+        oldPrice: previousPrice,
+        newPrice: Number(data.price),
+        changedById: actorId,
+      },
+    })
+  }
+
+  if (storeId) {
+    await allocateStock(id, storeId, delta, 'Ajustement depuis la fiche produit')
+  }
+
   return withPreorderState(withPricing(product))
+}
+
+/**
+ * La boutique concernée par une saisie manuelle de stock.
+ *
+ * On refuse plutôt que de choisir à la place de l'admin : un stock rangé dans
+ * la mauvaise boutique se voit tard, et se corrige à la main produit par
+ * produit.
+ */
+async function resolveStockStore(storeId: string | undefined, quantity: number) {
+  if (!storeId) {
+    throw new AppError(
+      quantity > 0
+        ? 'Précisez la boutique où se trouve ce stock : sans elle, la caisse ne pourra pas le vendre.'
+        : 'Précisez la boutique dont ce stock doit être retiré.',
+      400,
+    )
+  }
+  const store = await prisma.store.findUnique({ where: { id: storeId } })
+  if (!store) throw new AppError('Boutique introuvable', 404)
+  return store.id
+}
+
+/**
+ * Porte un écart de stock sur une boutique, avec sa trace d'inventaire.
+ * `products.stock` a déjà la bonne valeur absolue : seule la répartition reste
+ * à mettre à jour.
+ */
+async function allocateStock(productId: string, storeId: string, delta: number, note: string) {
+  await prisma.$transaction([
+    prisma.storeStock.upsert({
+      where: { productId_storeId: { productId, storeId } },
+      create: { productId, storeId, quantity: delta },
+      update: { quantity: { increment: delta } },
+    }),
+    prisma.inventory.create({
+      data: { productId, storeId, quantity: delta, type: 'ADJUSTMENT', note },
+    }),
+  ])
 }
 
 export async function deleteProduct(id: string) {
@@ -294,8 +367,14 @@ export async function deleteProduct(id: string) {
   await prisma.product.delete({ where: { id } })
 }
 
-export async function updateStock(productId: string, quantity: number, note?: string) {
+export async function updateStock(
+  productId: string,
+  quantity: number,
+  note?: string,
+  storeId?: string,
+) {
   await prisma.product.findUniqueOrThrow({ where: { id: productId } })
+  const store = await resolveStockStore(storeId, quantity)
 
   const [updated] = await prisma.$transaction([
     prisma.product.update({
@@ -303,9 +382,15 @@ export async function updateStock(productId: string, quantity: number, note?: st
       data: { stock: { increment: quantity } },
       select: { id: true, name: true, stock: true },
     }),
+    prisma.storeStock.upsert({
+      where: { productId_storeId: { productId, storeId: store } },
+      create: { productId, storeId: store, quantity },
+      update: { quantity: { increment: quantity } },
+    }),
     prisma.inventory.create({
       data: {
         productId,
+        storeId: store,
         quantity,
         type: quantity >= 0 ? 'RESTOCK' : 'ADJUSTMENT',
         note,

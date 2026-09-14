@@ -17,7 +17,7 @@ router.post('/', async (req, res, next) => {
 })
 
 // Admin — gestion des demandes
-router.get('/', authenticate, requireRole('ADMIN', 'MANAGER', 'STAFF'), async (req, res, next) => {
+router.get('/', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const query = PreorderQuerySchema.parse(req.query)
     const result = await preordersService.listPreorders(query)
@@ -27,7 +27,7 @@ router.get('/', authenticate, requireRole('ADMIN', 'MANAGER', 'STAFF'), async (r
   }
 })
 
-router.get('/:id', authenticate, requireRole('ADMIN', 'MANAGER', 'STAFF'), async (req, res, next) => {
+router.get('/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const request = await preordersService.getPreorder(String(req.params.id))
     res.json({ success: true, data: request })
@@ -36,7 +36,7 @@ router.get('/:id', authenticate, requireRole('ADMIN', 'MANAGER', 'STAFF'), async
   }
 })
 
-router.patch('/:id', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.patch('/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const input = UpdatePreorderSchema.parse(req.body)
     const request = await preordersService.updatePreorder(String(req.params.id), input)
@@ -46,7 +46,7 @@ router.patch('/:id', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, 
   }
 })
 
-router.delete('/:id', authenticate, requireRole('ADMIN'), async (req, res, next) => {
+router.delete('/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     await preordersService.deletePreorder(String(req.params.id))
     res.json({ success: true, data: null })

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { CreateProductSchema, UpdateProductSchema, ProductQuerySchema } from './products.types.js'
 import * as productsService from './products.service.js'
 import { authenticate, requireRole } from '../../middlewares/auth.js'
+import { resolveStoreScope } from '../../lib/store-scope.js'
 
 const router = Router()
 
@@ -58,27 +59,34 @@ router.get('/:id', async (req, res, next) => {
   }
 })
 
-router.post('/', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.post('/', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
-    const input = CreateProductSchema.parse(req.body)
-    const product = await productsService.createProduct(input)
+    const parsed = CreateProductSchema.parse(req.body)
+    // Le stock initial d'une vendeuse atterrit dans sa boutique, pas ailleurs.
+    const stockStoreId = await resolveStoreScope(req.user!, parsed.stockStoreId)
+    const product = await productsService.createProduct({ ...parsed, stockStoreId })
     res.status(201).json({ success: true, data: product })
   } catch (err) {
     next(err)
   }
 })
 
-router.patch('/:id', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.patch('/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
-    const input = UpdateProductSchema.parse(req.body)
-    const product = await productsService.updateProduct(String(req.params.id), input)
+    const parsed = UpdateProductSchema.parse(req.body)
+    const stockStoreId = await resolveStoreScope(req.user!, parsed.stockStoreId)
+    const product = await productsService.updateProduct(
+      String(req.params.id),
+      { ...parsed, stockStoreId },
+      req.user?.userId,
+    )
     res.json({ success: true, data: product })
   } catch (err) {
     next(err)
   }
 })
 
-router.delete('/:id', authenticate, requireRole('ADMIN'), async (req, res, next) => {
+router.delete('/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     await productsService.deleteProduct(String(req.params.id))
     res.json({ success: true, data: null })
@@ -90,11 +98,19 @@ router.delete('/:id', authenticate, requireRole('ADMIN'), async (req, res, next)
 router.post(
   '/:id/stock',
   authenticate,
-  requireRole('ADMIN', 'MANAGER', 'STAFF'),
+  requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'),
   async (req, res, next) => {
     try {
-      const { quantity, note } = req.body as { quantity: number; note?: string }
-      const result = await productsService.updateStock(String(req.params.id), quantity, note)
+      const { quantity, note, storeId } = req.body as {
+        quantity: number
+        note?: string
+        storeId?: string
+      }
+      // Une vendeuse ne peut mouvementer que le stock de sa boutique.
+      const scoped = await resolveStoreScope(req.user!, storeId)
+      const result = await productsService.updateStock(
+        String(req.params.id), quantity, note, scoped,
+      )
       res.json({ success: true, data: result })
     } catch (err) {
       next(err)
