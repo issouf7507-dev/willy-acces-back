@@ -137,3 +137,87 @@ export async function updateOrderStatus(id: string, status: string) {
   if (!order) throw new AppError('Commande introuvable', 404)
   return prisma.order.update({ where: { id }, data: { status: status as Prisma.EnumOrderStatusFilter['equals'] } })
 }
+
+/**
+ * Chiffres du tableau de bord du back-office, tous calculés sur la base — le
+ * précédent affichait six mois de données inventées.
+ *
+ * `withRevenue` sépare les montants du reste : la recette et son évolution ne
+ * sortent que pour un SUPER_ADMIN, comme partout ailleurs. Les décomptes, eux,
+ * sont visibles de tout le back-office.
+ */
+export async function orderStats(withRevenue: boolean) {
+  const now = new Date()
+  // Premier jour du mois, cinq mois en arrière : six mois avec le mois courant.
+  const from = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+
+  const [total, pending, stores, recent] = await Promise.all([
+    prisma.order.count({ where: { status: { not: 'CANCELLED' } } }),
+    prisma.order.count({ where: { status: 'PENDING' } }),
+    prisma.store.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true },
+    }),
+    prisma.order.findMany({
+      where: { status: { not: 'CANCELLED' }, createdAt: { gte: from } },
+      select: {
+        createdAt: true,
+        total: true,
+        storeId: true,
+        // Une commande compte toujours comme commande, mais son montant
+        // n'entre dans la recette qu'une fois encaissé : on ne paie pas sur
+        // le site.
+        payment: { select: { status: true } },
+      },
+    }),
+  ])
+
+  // Agrégation en mémoire : un GROUP BY sur un mois local dépendrait du fuseau
+  // du serveur MySQL, alors que la journée de caisse est celle d'Abidjan.
+  const buckets = new Map<string, { orders: number; revenue: number }>()
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(from.getFullYear(), from.getMonth() + i, 1)
+    buckets.set(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, {
+      orders: 0,
+      revenue: 0,
+    })
+  }
+
+  const byStore = new Map(stores.map((s) => [s.id, { ...s, orders: 0, revenue: 0 }]))
+
+  for (const order of recent) {
+    const key = `${order.createdAt.getFullYear()}-${String(order.createdAt.getMonth() + 1).padStart(2, '0')}`
+    const paid = order.payment?.status === 'PAID' ? Number(order.total) : 0
+
+    const bucket = buckets.get(key)
+    if (bucket) {
+      bucket.orders += 1
+      bucket.revenue += paid
+    }
+    const store = order.storeId ? byStore.get(order.storeId) : undefined
+    if (store) {
+      store.orders += 1
+      store.revenue += paid
+    }
+  }
+
+  const monthly = [...buckets].map(([month, v]) => ({
+    month,
+    orders: v.orders,
+    ...(withRevenue ? { revenue: v.revenue } : {}),
+  }))
+
+  return {
+    totalOrders: total,
+    pendingOrders: pending,
+    monthly,
+    byStore: [...byStore.values()].map((s) => ({
+      id: s.id,
+      name: s.name,
+      orders: s.orders,
+      ...(withRevenue ? { revenue: s.revenue } : {}),
+    })),
+    withRevenue,
+  }
+}

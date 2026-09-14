@@ -61,6 +61,13 @@ const ProductFieldsSchema = z.object({
   metadata: z.record(z.string(), z.any()).optional(),
   images: z.array(ProductImageSchema),
   variants: z.array(ProductVariantSchema),
+  /**
+   * Boutique où se trouve le stock saisi. Ce n'est pas une colonne du produit :
+   * un produit appartient au catalogue, pas à un point de vente. Le champ sert
+   * uniquement à savoir quelle boutique créditer ou débiter quand le stock est
+   * saisi à la main, sans quoi le total serait juste et la répartition vide.
+   */
+  stockStoreId: z.string().optional(),
 })
 
 /**

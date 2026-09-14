@@ -18,7 +18,7 @@ router.post('/', subscribeLimiter, async (req, res, next) => {
 })
 
 // Admin — consultation des inscrits
-router.get('/', authenticate, requireRole('ADMIN', 'MANAGER', 'STAFF'), async (req, res, next) => {
+router.get('/', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const query = SubscriberQuerySchema.parse(req.query)
     const result = await subscribersService.listSubscribers(query)
@@ -28,7 +28,7 @@ router.get('/', authenticate, requireRole('ADMIN', 'MANAGER', 'STAFF'), async (r
   }
 })
 
-router.delete('/:id', authenticate, requireRole('ADMIN'), async (req, res, next) => {
+router.delete('/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     await subscribersService.deleteSubscriber(String(req.params.id))
     res.json({ success: true, data: null })

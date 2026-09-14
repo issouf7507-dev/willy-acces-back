@@ -30,7 +30,7 @@ router.get('/carousel', async (req, res, next) => {
   }
 })
 
-router.post('/carousel', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.post('/carousel', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const data = SlideSchema.parse(req.body)
     const slide = await prisma.carouselSlide.create({ data })
@@ -40,7 +40,7 @@ router.post('/carousel', authenticate, requireRole('ADMIN', 'MANAGER'), async (r
   }
 })
 
-router.patch('/carousel/:id', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.patch('/carousel/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const data = SlideSchema.partial().parse(req.body)
     const slide = await prisma.carouselSlide.update({ where: { id: String(req.params.id) }, data })
@@ -50,7 +50,7 @@ router.patch('/carousel/:id', authenticate, requireRole('ADMIN', 'MANAGER'), asy
   }
 })
 
-router.delete('/carousel/:id', authenticate, requireRole('ADMIN'), async (req, res, next) => {
+router.delete('/carousel/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     await prisma.carouselSlide.delete({ where: { id: String(req.params.id) } })
     res.json({ success: true, data: null })
@@ -81,7 +81,7 @@ router.get('/accordion', async (req, res, next) => {
   }
 })
 
-router.post('/accordion', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.post('/accordion', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const data = AccordionSchema.parse(req.body)
     const item = await prisma.accordionItem.create({ data })
@@ -91,7 +91,7 @@ router.post('/accordion', authenticate, requireRole('ADMIN', 'MANAGER'), async (
   }
 })
 
-router.patch('/accordion/:id', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.patch('/accordion/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const data = AccordionSchema.partial().parse(req.body)
     const item = await prisma.accordionItem.update({ where: { id: String(req.params.id) }, data })
@@ -101,7 +101,7 @@ router.patch('/accordion/:id', authenticate, requireRole('ADMIN', 'MANAGER'), as
   }
 })
 
-router.delete('/accordion/:id', authenticate, requireRole('ADMIN'), async (req, res, next) => {
+router.delete('/accordion/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     await prisma.accordionItem.delete({ where: { id: String(req.params.id) } })
     res.json({ success: true, data: null })
@@ -126,7 +126,7 @@ router.get('/salon', async (req, res, next) => {
   }
 })
 
-router.post('/salon', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.post('/salon', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const { images = [], ...data } = req.body as { images?: object[]; [k: string]: unknown }
     const catalogue = await prisma.salonCatalogue.create({
@@ -145,7 +145,7 @@ router.post('/salon', authenticate, requireRole('ADMIN', 'MANAGER'), async (req,
   }
 })
 
-router.delete('/salon/:id', authenticate, requireRole('ADMIN'), async (req, res, next) => {
+router.delete('/salon/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     await prisma.salonCatalogue.delete({ where: { id: String(req.params.id) } })
     res.json({ success: true, data: null })
@@ -179,7 +179,7 @@ router.get('/salon-services', async (req, res, next) => {
   }
 })
 
-router.post('/salon-services', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.post('/salon-services', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const data = SalonServiceSchema.parse(req.body)
     const service = await prisma.salonService.create({ data })
@@ -189,7 +189,7 @@ router.post('/salon-services', authenticate, requireRole('ADMIN', 'MANAGER'), as
   }
 })
 
-router.patch('/salon-services/:id', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.patch('/salon-services/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const data = SalonServiceSchema.partial().parse(req.body)
     const service = await prisma.salonService.update({ where: { id: String(req.params.id) }, data })
@@ -199,7 +199,7 @@ router.patch('/salon-services/:id', authenticate, requireRole('ADMIN', 'MANAGER'
   }
 })
 
-router.delete('/salon-services/:id', authenticate, requireRole('ADMIN'), async (req, res, next) => {
+router.delete('/salon-services/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     await prisma.salonService.delete({ where: { id: String(req.params.id) } })
     res.json({ success: true, data: null })

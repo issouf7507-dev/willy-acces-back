@@ -70,8 +70,8 @@ async function resetTestData() {
   await prisma.productVariant.deleteMany({});
   await prisma.address.deleteMany({});
   await prisma.product.deleteMany({});
-  // On garde l'admin, on retire les autres comptes de test.
-  await prisma.user.deleteMany({ where: { role: { not: "ADMIN" } } });
+  // On garde le super admin, on retire les autres comptes de test.
+  await prisma.user.deleteMany({ where: { role: { not: "SUPER_ADMIN" } } });
   usedSlugs.clear();
   console.log("🧹 Anciennes données de test supprimées");
 }
@@ -88,7 +88,7 @@ async function seedUsers(): Promise<SeedUsers> {
   const mk = async (
     email: string,
     name: string,
-    role: "ADMIN" | "MANAGER" | "STAFF" | "CUSTOMER",
+    role: "SUPER_ADMIN" | "ADMIN" | "VENDEUR" | "CUSTOMER",
     password: string,
     phone?: string,
   ) => {
@@ -102,22 +102,22 @@ async function seedUsers(): Promise<SeedUsers> {
 
   const admin = await mk(
     "admin@willy-accesoire.com",
-    "Admin",
-    "ADMIN",
+    "Super Admin",
+    "SUPER_ADMIN",
     "Admin1234!",
     "+2250700000001",
   );
   const manager = await mk(
     "manager@willy-accesoire.com",
-    "Manager Willy",
-    "MANAGER",
+    "Admin Willy",
+    "ADMIN",
     "Manager1234!",
     "+2250700000002",
   );
   const staff = await mk(
     "staff@willy-accesoire.com",
-    "Staff Willy",
-    "STAFF",
+    "Vendeuse Willy",
+    "VENDEUR",
     "Staff1234!",
     "+2250700000003",
   );
@@ -143,7 +143,7 @@ async function seedUsers(): Promise<SeedUsers> {
 
   console.log("✅ Utilisateurs :");
   console.log("   admin@willy-accesoire.com   / Admin1234!    (ADMIN)");
-  console.log("   manager@willy-accesoire.com / Manager1234!  (MANAGER)");
+  console.log("   manager@willy-accesoire.com / Manager1234!  (ADMIN)");
   console.log("   staff@willy-accesoire.com   / Staff1234!    (STAFF)");
   console.log("   aya@example.com             / Client1234!   (CUSTOMER)");
   console.log("   koffi@example.com           / Client1234!   (CUSTOMER)");

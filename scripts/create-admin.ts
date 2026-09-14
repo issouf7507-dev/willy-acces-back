@@ -92,11 +92,11 @@ async function main() {
   const interactive = stdin.isTTY && !process.env.ADMIN_PASSWORD;
 
   const existingAdmins = await prisma.user.count({
-    where: { role: "ADMIN", isActive: true },
+    where: { role: "SUPER_ADMIN", isActive: true },
   });
   if (existingAdmins > 0 && !RESET) {
     console.log(
-      `ℹ️  ${existingAdmins} administrateur(s) actif(s) déjà présent(s) : rien à faire.`,
+      `ℹ️  ${existingAdmins} super administrateur(s) actif(s) déjà présent(s) : rien à faire.`,
     );
     console.log("   Mot de passe oublié ? Relancez avec --reset-password.");
     return;
@@ -130,12 +130,12 @@ async function main() {
     }
     await prisma.user.update({
       where: { id: existing.id },
-      data: { password: hashed, role: "ADMIN", isActive: true },
+      data: { password: hashed, role: "SUPER_ADMIN", isActive: true },
     });
     // Les sessions ouvertes doivent tomber : le mot de passe a changé.
     await prisma.session.deleteMany({ where: { userId: existing.id } });
     console.log(
-      `✅ Compte ${email} réinitialisé (rôle ADMIN, sessions révoquées).`,
+      `✅ Compte ${email} réinitialisé (rôle SUPER_ADMIN, sessions révoquées).`,
     );
     return;
   }
@@ -145,9 +145,9 @@ async function main() {
       (interactive ? await ask("Nom affiché [Admin] : ") : "")) ||
     "Admin";
   await prisma.user.create({
-    data: { name, email, password: hashed, role: "ADMIN", isActive: true },
+    data: { name, email, password: hashed, role: "SUPER_ADMIN", isActive: true },
   });
-  console.log(`✅ Administrateur créé : ${email}`);
+  console.log(`✅ Super administrateur créé : ${email}`);
   console.log(
     "   Connectez-vous sur /admin/login, puis créez les autres comptes depuis Utilisateurs.",
   );

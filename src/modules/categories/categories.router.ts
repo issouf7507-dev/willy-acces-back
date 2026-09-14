@@ -24,7 +24,7 @@ router.get('/:id', async (req, res, next) => {
   }
 })
 
-router.post('/', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.post('/', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const input = CreateCategorySchema.parse(req.body)
     const category = await categoriesService.createCategory(input)
@@ -34,7 +34,7 @@ router.post('/', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res,
   }
 })
 
-router.patch('/:id', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.patch('/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const input = UpdateCategorySchema.parse(req.body)
     const category = await categoriesService.updateCategory(String(req.params.id), input)
@@ -44,7 +44,7 @@ router.patch('/:id', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, 
   }
 })
 
-router.delete('/:id', authenticate, requireRole('ADMIN'), async (req, res, next) => {
+router.delete('/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     await categoriesService.deleteCategory(String(req.params.id))
     res.json({ success: true, data: null })

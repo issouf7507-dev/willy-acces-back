@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { RegisterSchema, LoginSchema } from './auth.types.js'
+import { RegisterSchema, LoginSchema, ChangePasswordSchema } from './auth.types.js'
 import * as authService from './auth.service.js'
 import { authenticate } from '../../middlewares/auth.js'
 import { authLimiter } from '../../middlewares/rateLimit.js'
@@ -34,6 +34,21 @@ router.post('/logout', authenticate, async (req, res, next) => {
   try {
     const token = req.headers.authorization!.slice(7)
     await authService.logout(token)
+    res.json({ success: true, data: null })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * Chacun change son propre mot de passe, quel que soit son rôle : c'est la
+ * seule action qu'un compte non super administrateur exerce sur un compte.
+ */
+router.post('/password', authenticate, authLimiter, async (req, res, next) => {
+  try {
+    const input = ChangePasswordSchema.parse(req.body)
+    const token = req.headers.authorization?.slice(7)
+    await authService.changePassword(req.user!.userId, input, token)
     res.json({ success: true, data: null })
   } catch (err) {
     next(err)

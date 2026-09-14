@@ -5,7 +5,7 @@ import { authenticate, requireRole } from '../../middlewares/auth.js'
 
 const router = Router()
 
-router.get('/', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.get('/', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const coupons = await couponsService.listCoupons()
     res.json({ success: true, data: coupons })
@@ -24,7 +24,7 @@ router.post('/validate', async (req, res, next) => {
   }
 })
 
-router.get('/:id', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.get('/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const coupon = await couponsService.getCoupon(String(req.params.id))
     res.json({ success: true, data: coupon })
@@ -33,7 +33,7 @@ router.get('/:id', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, re
   }
 })
 
-router.post('/', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.post('/', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const input = CreateCouponSchema.parse(req.body)
     const coupon = await couponsService.createCoupon(input)
@@ -43,7 +43,7 @@ router.post('/', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res,
   }
 })
 
-router.patch('/:id', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+router.patch('/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     const input = UpdateCouponSchema.parse(req.body)
     const coupon = await couponsService.updateCoupon(String(req.params.id), input)
@@ -53,7 +53,7 @@ router.patch('/:id', authenticate, requireRole('ADMIN', 'MANAGER'), async (req, 
   }
 })
 
-router.delete('/:id', authenticate, requireRole('ADMIN'), async (req, res, next) => {
+router.delete('/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'VENDEUR'), async (req, res, next) => {
   try {
     await couponsService.deleteCoupon(String(req.params.id))
     res.json({ success: true, data: null })
