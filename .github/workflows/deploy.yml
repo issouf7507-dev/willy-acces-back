@@ -24,7 +24,7 @@ jobs:
             echo "→ → Pull du code"
             git pull origin main
 
-            echo "→ → Activation de pnpm"
+            echo "→ → Activation de pnpm package manager"
             export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
             export PATH="$HOME/.local/bin:$PATH"
             if ! command -v pnpm > /dev/null 2>&1; then
