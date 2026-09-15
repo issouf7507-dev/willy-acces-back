@@ -20,6 +20,8 @@ interface Actor {
 export async function resolveStoreScope(
   actor: Actor,
   requested: string | undefined,
+  /** Refus adapté à l'action : tout ce qui est borné ici n'est pas du stock. */
+  refusal = 'Vous ne pouvez agir que sur le stock de votre boutique.',
 ): Promise<string | undefined> {
   if (actor.role !== 'VENDEUR') return requested
 
@@ -34,7 +36,7 @@ export async function resolveStoreScope(
     )
   }
   if (requested && requested !== me.storeId) {
-    throw new AppError('Vous ne pouvez agir que sur le stock de votre boutique.', 403)
+    throw new AppError(refusal, 403)
   }
   return me.storeId
 }

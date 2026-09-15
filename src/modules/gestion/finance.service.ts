@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
 import { AppError } from '../../middlewares/errors.js'
 import { PAID_ORDER } from '../../lib/paid-orders.js'
+import { resolveStoreScope } from '../../lib/store-scope.js'
 import type {
   CreateExpenseInput,
   ExpenseQuery,
@@ -21,29 +22,64 @@ function monthBounds(month: string): [Date, Date] {
 const monthKey = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 
+/** La personne connectée qui effectue l'action. */
+interface Actor {
+  userId: string
+  role: string
+}
+
+/** Jour courant `YYYY-MM-DD`, en heure locale comme le reste du module. */
+const todayKey = (d = new Date()): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
 // ─── Dépenses annexes ────────────────────────────────────────────────────────
 
-export async function listExpenses(query: ExpenseQuery) {
-  const [from, to] = query.month
-    ? monthBounds(query.month)
-    : [
-        query.from ? new Date(`${query.from}T00:00:00`) : undefined,
-        query.to ? new Date(`${query.to}T23:59:59.999`) : undefined,
-      ]
+export async function listExpenses(query: ExpenseQuery, actor: Actor) {
+  const storeId = await resolveStoreScope(
+    actor,
+    query.storeId,
+    'Vous ne pouvez consulter que les dépenses de votre boutique.',
+  )
+
+  // La vendeuse ne lit que la journée en cours : le cumul du mois dit ce que la
+  // boutique dépense, un chiffre qui relève du bureau.
+  const day = actor.role === 'VENDEUR' ? todayKey() : null
+  const [from, to] = day
+    ? [new Date(`${day}T00:00:00`), new Date(`${day}T23:59:59.999`)]
+    : query.month
+      ? monthBounds(query.month)
+      : [
+          query.from ? new Date(`${query.from}T00:00:00`) : undefined,
+          query.to ? new Date(`${query.to}T23:59:59.999`) : undefined,
+        ]
 
   return prisma.expense.findMany({
     where: {
       ...(from || to ? { date: { ...(from ? { gte: from } : {}), ...(to ? { lt: to } : {}) } } : {}),
-      ...(query.storeId ? { storeId: query.storeId } : {}),
+      ...(storeId ? { storeId } : {}),
     },
     include: { store: { select: { id: true, name: true } } },
     orderBy: { date: 'desc' },
   })
 }
 
-export async function createExpense(input: CreateExpenseInput) {
+export async function createExpense(input: CreateExpenseInput, actor: Actor) {
+  // Même borne qu'à la caisse : la dépense tombe dans la boutique où l'on
+  // travaille, jamais dans celle d'à côté.
+  const storeId = await resolveStoreScope(
+    actor,
+    input.storeId ?? undefined,
+    'Vous ne pouvez enregistrer une dépense que dans votre boutique.',
+  )
+
+  // Antidater serait un moyen commode de rattraper une caisse qui ne tombe pas
+  // juste : la vendeuse note la journée qu'elle est en train de faire.
+  if (actor.role === 'VENDEUR' && input.date !== todayKey()) {
+    throw new AppError('Vous ne pouvez enregistrer qu’une dépense du jour.', 403)
+  }
+
   return prisma.expense.create({
-    data: { ...input, date: new Date(`${input.date}T12:00:00`) },
+    data: { ...input, storeId: storeId ?? null, date: new Date(`${input.date}T12:00:00`) },
     include: { store: { select: { id: true, name: true } } },
   })
 }
@@ -59,9 +95,24 @@ export async function updateExpense(id: string, input: UpdateExpenseInput) {
   })
 }
 
-export async function deleteExpense(id: string) {
+export async function deleteExpense(id: string, actor: Actor) {
   const existing = await prisma.expense.findUnique({ where: { id } })
   if (!existing) throw new AppError('Dépense introuvable', 404)
+
+  // Le comptoir efface sa faute de frappe du jour, rien de plus : une dépense
+  // d'hier est déjà entrée dans les comptes, et celle d'une autre boutique ne
+  // le regarde pas. `resolveStoreScope` renvoie `undefined` à l'administration,
+  // qui garde la main sur toutes les lignes.
+  const scope = await resolveStoreScope(actor, undefined)
+  if (scope) {
+    if (existing.storeId !== scope) {
+      throw new AppError('Cette dépense n’a pas été enregistrée dans votre boutique.', 403)
+    }
+    if (todayKey(existing.date) !== todayKey()) {
+      throw new AppError('Vous ne pouvez supprimer qu’une dépense du jour.', 403)
+    }
+  }
+
   await prisma.expense.delete({ where: { id } })
 }
 
