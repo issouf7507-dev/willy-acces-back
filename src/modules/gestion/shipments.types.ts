@@ -4,13 +4,14 @@ import { z } from 'zod'
  * Sans valeur par défaut : appliqués à un PATCH, les `.default()` de Zod
  * réécriraient les champs absents de la requête (`.partial()` les conserve).
  */
+const code = z.string().min(1).max(20).trim().toUpperCase()
+
 const shipmentFields = {
-  /** Identifiant du lot, à la manière du suivi Excel : G1, G2… */
-  code: z.string().min(1).max(20).trim().toUpperCase(),
+  /** Identifiant de l'arrivage : A1, A2… */
+  code,
   label: z.string().max(120),
   /** Boutique par défaut du lot ; chaque ligne peut la remplacer. */
   storeId: z.string().nullable(),
-  shippingCost: z.number().min(0),
   orderedAt: z.iso.datetime(),
   notes: z.string().max(2000),
 }
@@ -20,12 +21,29 @@ export const CreateShipmentSchema = z.object({
   code: shipmentFields.code.optional(),
   label: shipmentFields.label.optional(),
   storeId: shipmentFields.storeId.optional(),
-  shippingCost: shipmentFields.shippingCost.default(0),
   orderedAt: shipmentFields.orderedAt.optional(),
   notes: shipmentFields.notes.optional(),
 })
 
 export const UpdateShipmentSchema = z.object(shipmentFields).partial()
+
+const groupFields = {
+  /** Identifiant du groupe, à la manière du suivi Excel : G1, G2… */
+  code,
+  label: z.string().max(120),
+  shippingCost: z.number().min(0),
+}
+
+export const CreateShipmentGroupSchema = z.object({
+  /** Absent = code attribué automatiquement (G1, G2…). */
+  code: groupFields.code.optional(),
+  label: groupFields.label.optional(),
+  shippingCost: groupFields.shippingCost.default(0),
+  /** Lignes de l'arrivage à placer d'emblée dans le groupe. */
+  itemIds: z.array(z.string().min(1)).default([]),
+})
+
+export const UpdateShipmentGroupSchema = z.object(groupFields).partial()
 
 const itemFields = {
   productId: z.string().min(1),
@@ -47,6 +65,8 @@ export const CreateShipmentItemSchema = z.object({
 export const UpdateShipmentItemSchema = z
   .object({
     storeId: itemFields.storeId,
+    /** `null` sort la ligne de son groupe. */
+    groupId: z.string().min(1).nullable(),
     quantity: itemFields.quantity,
     unitCost: itemFields.unitCost,
     plannedPrice: itemFields.plannedPrice.nullable(),
@@ -59,6 +79,8 @@ export const ShipmentQuerySchema = z.object({
 
 export type CreateShipmentInput = z.infer<typeof CreateShipmentSchema>
 export type UpdateShipmentInput = z.infer<typeof UpdateShipmentSchema>
+export type CreateShipmentGroupInput = z.infer<typeof CreateShipmentGroupSchema>
+export type UpdateShipmentGroupInput = z.infer<typeof UpdateShipmentGroupSchema>
 export type CreateShipmentItemInput = z.infer<typeof CreateShipmentItemSchema>
 export type UpdateShipmentItemInput = z.infer<typeof UpdateShipmentItemSchema>
 export type ShipmentQuery = z.infer<typeof ShipmentQuerySchema>

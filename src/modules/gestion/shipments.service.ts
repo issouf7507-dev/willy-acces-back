@@ -2,9 +2,11 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
 import { AppError } from '../../middlewares/errors.js'
 import type {
+  CreateShipmentGroupInput,
   CreateShipmentInput,
   CreateShipmentItemInput,
   ShipmentQuery,
+  UpdateShipmentGroupInput,
   UpdateShipmentInput,
   UpdateShipmentItemInput,
 } from './shipments.types.js'
@@ -17,6 +19,7 @@ const SHIPMENT_INCLUDE = {
     },
     orderBy: { createdAt: 'asc' },
   },
+  groups: { orderBy: { createdAt: 'asc' } },
   store: { select: { id: true, name: true } },
 } satisfies Prisma.ShipmentInclude
 
@@ -24,20 +27,23 @@ const num = (v: Prisma.Decimal | number | null | undefined): number =>
   v === null || v === undefined ? 0 : Number(v)
 
 /**
- * Prochain code libre de la série G1, G2… Le suivi Excel numérotait les lots à
- * la main ; on garde la même lisibilité sans le risque de doublon.
+ * Prochain code libre d'une série : A1, A2… pour les arrivages, G1, G2… pour
+ * les groupes. Le suivi Excel numérotait les lots à la main ; on garde la même
+ * lisibilité sans le risque de doublon.
  */
-async function nextCode(): Promise<string> {
-  const last = await prisma.shipment.findMany({
-    where: { code: { startsWith: 'G' } },
-    select: { code: true },
-  })
-  const max = last.reduce((acc, { code }) => {
-    const n = Number(code.slice(1))
-    return Number.isInteger(n) && n > acc ? n : acc
+function nextCode(existing: { code: string }[], prefix: string): string {
+  const max = existing.reduce((acc, { code }) => {
+    const n = Number(code.slice(prefix.length))
+    return code.startsWith(prefix) && Number.isInteger(n) && n > acc ? n : acc
   }, 0)
-  return `G${max + 1}`
+  return `${prefix}${max + 1}`
 }
+
+const nextShipmentCode = async () =>
+  nextCode(await prisma.shipment.findMany({ where: { code: { startsWith: 'A' } }, select: { code: true } }), 'A')
+
+const nextGroupCode = async () =>
+  nextCode(await prisma.shipmentGroup.findMany({ where: { code: { startsWith: 'G' } }, select: { code: true } }), 'G')
 
 export async function listShipments(query: ShipmentQuery) {
   return prisma.shipment.findMany({
@@ -66,7 +72,7 @@ async function getDraft(id: string) {
 }
 
 export async function createShipment(input: CreateShipmentInput) {
-  const code = input.code ?? (await nextCode())
+  const code = input.code ?? (await nextShipmentCode())
   return prisma.shipment.create({
     data: {
       ...input,
@@ -119,6 +125,75 @@ export async function addItem(shipmentId: string, input: CreateShipmentItemInput
   return getShipment(shipmentId)
 }
 
+// ─── Groupes ─────────────────────────────────────────────────────────────────
+
+/** Vérifie que les lignes appartiennent bien à l'arrivage. */
+async function assertItems(shipmentId: string, itemIds: string[]) {
+  if (!itemIds.length) return
+  const count = await prisma.shipmentItem.count({ where: { id: { in: itemIds }, shipmentId } })
+  if (count !== new Set(itemIds).size) {
+    throw new AppError('Certaines lignes n’appartiennent pas à cet arrivage.', 400)
+  }
+}
+
+async function assertGroup(shipmentId: string, groupId: string) {
+  const group = await prisma.shipmentGroup.findFirst({ where: { id: groupId, shipmentId } })
+  if (!group) throw new AppError('Groupe introuvable', 404)
+  return group
+}
+
+async function assertGroupCodeFree(code: string, exceptId?: string) {
+  const clash = await prisma.shipmentGroup.findUnique({ where: { code } })
+  if (clash && clash.id !== exceptId) {
+    throw new AppError(`Le code ${code} est déjà pris par un autre groupe.`, 409)
+  }
+}
+
+/**
+ * Crée un groupe à partir de produits de l'arrivage. Une ligne déjà dans un
+ * autre groupe y est déplacée : un article ne voyage que dans un seul groupe.
+ */
+export async function createGroup(shipmentId: string, input: CreateShipmentGroupInput) {
+  await getDraft(shipmentId)
+  const { itemIds, ...data } = input
+  await assertItems(shipmentId, itemIds)
+  const code = data.code ?? (await nextGroupCode())
+  await assertGroupCodeFree(code)
+
+  await prisma.$transaction(async (tx) => {
+    const group = await tx.shipmentGroup.create({ data: { ...data, code, shipmentId } })
+    if (itemIds.length) {
+      await tx.shipmentItem.updateMany({
+        where: { id: { in: itemIds }, shipmentId },
+        data: { groupId: group.id },
+      })
+    }
+  })
+  return getShipment(shipmentId)
+}
+
+export async function updateGroup(
+  shipmentId: string,
+  groupId: string,
+  input: UpdateShipmentGroupInput,
+) {
+  await getDraft(shipmentId)
+  await assertGroup(shipmentId, groupId)
+  if (input.code) await assertGroupCodeFree(input.code, groupId)
+  await prisma.shipmentGroup.update({ where: { id: groupId }, data: input })
+  return getShipment(shipmentId)
+}
+
+/** Supprime le groupe ; ses produits restent dans l'arrivage, sans groupe. */
+export async function removeGroup(shipmentId: string, groupId: string) {
+  await getDraft(shipmentId)
+  await assertGroup(shipmentId, groupId)
+  await prisma.shipmentGroup.delete({ where: { id: groupId } })
+  return getShipment(shipmentId)
+}
+
+// ─── Lignes ──────────────────────────────────────────────────────────────────
+
 /** Une boutique désactivée ne doit pas se retrouver créditée d'un arrivage. */
 async function assertStore(storeId: string) {
   const store = await prisma.store.findUnique({ where: { id: storeId } })
@@ -135,6 +210,8 @@ export async function updateItem(
   await getDraft(shipmentId)
   const item = await prisma.shipmentItem.findFirst({ where: { id: itemId, shipmentId } })
   if (!item) throw new AppError('Ligne introuvable', 404)
+
+  if (input.groupId) await assertGroup(shipmentId, input.groupId)
 
   if (input.storeId && input.storeId !== item.storeId) {
     await assertStore(input.storeId)
@@ -192,8 +269,8 @@ async function recomputeCostPrice(tx: Prisma.TransactionClient, productId: strin
 /**
  * Réceptionne un arrivage. C'est l'unique moment où il touche au stock :
  *
- *  1. le transport du lot est réparti à l'unité sur la quantité totale reçue,
- *     exactement comme dans le suivi Excel ;
+ *  1. le transport de chaque groupe est réparti à l'unité sur les articles
+ *     du groupe, exactement comme dans le suivi Excel ;
  *  2. le coût de revient (achat + transport) est figé sur chaque ligne ;
  *  3. le stock des produits est incrémenté, avec un mouvement RESTOCK qui
  *     laisse une piste d'audit ;
@@ -208,14 +285,35 @@ export async function receiveShipment(id: string) {
     throw new AppError('Cet arrivage ne contient aucune ligne : rien à réceptionner.', 400)
   }
 
-  const totalQty = shipment.items.reduce((sum, i) => sum + i.quantity, 0)
-  // Répartition à l'unité, comme dans le classeur : le transport du lot divisé
-  // par le nombre d'articles reçus, quelle que soit leur valeur.
-  const unitShipping = totalQty > 0 ? num(shipment.shippingCost) / totalQty : 0
+  // Un article hors groupe n'aurait pas de transport : son coût de revient
+  // serait sous-évalué, et la marge avec.
+  const ungrouped = shipment.items.filter((i) => !i.groupId)
+  if (ungrouped.length) {
+    throw new AppError(
+      `${ungrouped.length} produit(s) ne sont dans aucun groupe : répartissez-les avant de réceptionner.`,
+      400,
+    )
+  }
+
+  // Répartition à l'unité, comme dans le classeur : le transport du groupe
+  // divisé par le nombre d'articles du groupe, quelle que soit leur valeur.
+  const unitShippingByGroup = new Map<string, number>()
+  for (const group of shipment.groups) {
+    const qty = shipment.items
+      .filter((i) => i.groupId === group.id)
+      .reduce((sum, i) => sum + i.quantity, 0)
+    // Un groupe vide perdrait son transport sans le répercuter nulle part.
+    if (qty === 0) {
+      throw new AppError(`Le groupe ${group.code} est vide : ajoutez-y des produits ou supprimez-le.`, 400)
+    }
+    unitShippingByGroup.set(group.id, num(group.shippingCost) / qty)
+  }
+  const groupCode = new Map(shipment.groups.map((g) => [g.id, g.code]))
   const receivedAt = new Date()
 
   await prisma.$transaction(async (tx) => {
     for (const item of shipment.items) {
+      const unitShipping = unitShippingByGroup.get(item.groupId!) ?? 0
       const landedCost = num(item.unitCost) + unitShipping
 
       await tx.shipmentItem.update({
@@ -233,7 +331,7 @@ export async function receiveShipment(id: string) {
           quantity: item.quantity,
           type: 'RESTOCK',
           reference: shipment.code,
-          note: `Arrivage ${shipment.code}`,
+          note: `Arrivage ${shipment.code} · groupe ${groupCode.get(item.groupId!)}`,
         },
       })
 

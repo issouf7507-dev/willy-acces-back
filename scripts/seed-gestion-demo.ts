@@ -156,7 +156,6 @@ async function seed() {
   // Lot partagé : le gros de la marchandise à la Palmeraie, une partie à Cocody.
   const g1 = await shipments.createShipment({
     label: 'Lot cargo — démonstration',
-    shippingCost: 90000,
     storeId: palmeraie.id,
     orderedAt: daysAgo(45).toISOString(),
   })
@@ -166,18 +165,22 @@ async function seed() {
   await shipments.addItem(g1.id, {
     productId: main.id, storeId: cocody.id, quantity: 50, unitCost: 2000, plannedPrice: 6500,
   })
-  await shipments.addItem(g1.id, { productId: second.id, quantity: 30, unitCost: 12000, plannedPrice: 21000 })
+  const g1Lines = await shipments.addItem(g1.id, { productId: second.id, quantity: 30, unitCost: 12000, plannedPrice: 21000 })
+  await shipments.createGroup(g1.id, {
+    shippingCost: 90000,
+    itemIds: g1Lines.items.map((i) => i.id),
+  })
   await shipments.receiveShipment(g1.id)
   console.log(`✅ Arrivage ${g1.code} réceptionné — 180 articles, transport réparti à 500 F/unité`)
 
   // ── Arrivage encore en brouillon, pour montrer l'autre état de l'écran ────
   const g2 = await shipments.createShipment({
     label: 'Prochain envoi — démonstration',
-    shippingCost: 30000,
     storeId: marcory.id,
   })
   snap.shipmentIds.push(g2.id)
-  await shipments.addItem(g2.id, { productId: main.id, quantity: 50, unitCost: 2100, plannedPrice: 6900 })
+  const g2Lines = await shipments.addItem(g2.id, { productId: main.id, quantity: 50, unitCost: 2100, plannedPrice: 6900 })
+  await shipments.createGroup(g2.id, { shippingCost: 30000, itemIds: g2Lines.items.map((i) => i.id) })
   console.log(`✅ Arrivage ${g2.code} en brouillon`)
 
   // ── Ventes réparties sur 40 jours, 3 boutiques, 3 vendeuses ──────────────
