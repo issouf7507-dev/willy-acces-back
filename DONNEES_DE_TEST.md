@@ -124,10 +124,34 @@ DATABASE_URL="mysql://root:...@localhost:3306/willy_accesoire?allowPublicKeyRetr
 | Catalogues salon    | 3                                                                                                          |
 | Réglages boutique   | 6 (`storeName`, `contactPhone`, `contactEmail`, `whatsappNumber`, `announcement`, `freeShippingThreshold`) |
 
+## Précommandes de démonstration
+
+Le catalogue vient entièrement du back-office, et `src/data/preorders.ts` ne
+contient plus aucune précommande : le seed n'en crée donc plus, et la page
+`/collections/produits-a-venir` reste vide sur une base fraîche. Pour la
+peupler en développement :
+
+```bash
+cd backend
+pnpm run preorders:demo            # 6 précommandes fictives
+pnpm run preorders:demo -- --clear # les retire
+```
+
+Les dates de sortie sont calculées à l'exécution — 26 jours, 9 jours, 2 jours,
+20 h, 3 h et 6 minutes — ce qui couvre tous les états du compte à rebours, y
+compris le dernier jour (heures/minutes/secondes) et la bascule sur
+« Disponible maintenant » pendant le test. Les cartes réutilisent des photos
+déjà présentes en base ; la dernière est volontairement sans photo, pour voir
+le rendu de repli en dégradé.
+
+Le script ne touche qu'à ses propres lignes : elles portent le slug
+`demo-precommande-*`, et seules celles-là sont supprimées. Il refuse de
+s'exécuter avec `NODE_ENV=production`.
+
 ## Source des données produits
 
-Les produits sont importés depuis les fichiers du frontend :
+Les sacs et accessoires du seed sont importés depuis les fichiers du frontend :
 
 - `willy-accesoire/src/data/bags.ts`
 - `willy-accesoire/src/data/accessories.ts`
-- `willy-accesoire/src/data/preorders.ts`
+- `willy-accesoire/src/data/preorders.ts` (vide : voir la section ci-dessus)

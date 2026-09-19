@@ -20,6 +20,7 @@ config()
 
 const { prisma } = await import('../src/lib/prisma.js')
 const shipments = await import('../src/modules/gestion/shipments.service.js')
+const shipmentGroups = await import('../src/modules/gestion/shipment-groups.service.js')
 const sales = await import('../src/modules/gestion/sales.service.js')
 const finance = await import('../src/modules/gestion/finance.service.js')
 const targets = await import('../src/modules/gestion/targets.service.js')
@@ -63,6 +64,8 @@ async function clear() {
     await tx.inventory.deleteMany({ where: { reference: { in: snap.inventoryRefs } } })
     await tx.payment.deleteMany({ where: { orderId: { in: snap.orderIds } } })
     await tx.order.deleteMany({ where: { id: { in: snap.orderIds } } })
+    // Les livraisons d'abord : leurs lignes bloquent la suppression des lignes commandées.
+    await tx.shipmentGroup.deleteMany({ where: { shipmentId: { in: snap.shipmentIds } } })
     await tx.shipment.deleteMany({ where: { id: { in: snap.shipmentIds } } })
     await tx.salesTarget.deleteMany({ where: { id: { in: snap.targetIds } } })
     await tx.expense.deleteMany({ where: { id: { in: snap.expenseIds } } })
@@ -160,18 +163,20 @@ async function seed() {
     orderedAt: daysAgo(45).toISOString(),
   })
   snap.shipmentIds.push(g1.id)
-  snap.inventoryRefs.push(g1.code)
   await shipments.addItem(g1.id, { productId: main.id, quantity: 100, unitCost: 2000, plannedPrice: 6500 })
   await shipments.addItem(g1.id, {
     productId: main.id, storeId: cocody.id, quantity: 50, unitCost: 2000, plannedPrice: 6500,
   })
   const g1Lines = await shipments.addItem(g1.id, { productId: second.id, quantity: 30, unitCost: 12000, plannedPrice: 21000 })
-  await shipments.createGroup(g1.id, {
+  // Tout livré d'un coup : une seule livraison, un seul groupe.
+  const delivery = await shipmentGroups.createGroup({
+    shipmentId: g1.id,
     shippingCost: 90000,
-    itemIds: g1Lines.items.map((i) => i.id),
+    items: g1Lines.items.map((i) => ({ shipmentItemId: i.id, quantity: i.quantity })),
   })
-  await shipments.receiveShipment(g1.id)
-  console.log(`✅ Arrivage ${g1.code} réceptionné — 180 articles, transport réparti à 500 F/unité`)
+  snap.inventoryRefs.push(delivery.code)
+  await shipmentGroups.receiveGroup(delivery.id)
+  console.log(`✅ Arrivage ${g1.code} reçu (groupe ${delivery.code}) — 180 articles, transport réparti à 500 F/unité`)
 
   // ── Arrivage encore en brouillon, pour montrer l'autre état de l'écran ────
   const g2 = await shipments.createShipment({
@@ -180,8 +185,13 @@ async function seed() {
   })
   snap.shipmentIds.push(g2.id)
   const g2Lines = await shipments.addItem(g2.id, { productId: main.id, quantity: 50, unitCost: 2100, plannedPrice: 6900 })
-  await shipments.createGroup(g2.id, { shippingCost: 30000, itemIds: g2Lines.items.map((i) => i.id) })
-  console.log(`✅ Arrivage ${g2.code} en brouillon`)
+  // Première livraison annoncée, pas encore réceptionnée : 20 sur 50.
+  await shipmentGroups.createGroup({
+    shipmentId: g2.id,
+    shippingCost: 30000,
+    items: [{ shipmentItemId: g2Lines.items[0].id, quantity: 20 }],
+  })
+  console.log(`✅ Arrivage ${g2.code} en attente, une livraison de 20 sur 50 en brouillon`)
 
   // ── Ventes réparties sur 40 jours, 3 boutiques, 3 vendeuses ──────────────
   const clients = [

@@ -99,10 +99,19 @@ enum StoreType {
 /// Cycle de vie d'un arrivage. Rien n'entre en stock tant qu'il est en
 /// brouillon ; la réception est le seul moment où les quantités et le coût de
 /// revient sont figés.
+/// État d'un arrivage (la commande) : DRAFT = rien reçu, PARTIAL = une
+/// partie reçue, RECEIVED = tout reçu ou clôturé.
 enum ShipmentStatus {
   DRAFT
+  PARTIAL
   RECEIVED
   CANCELLED
+}
+
+/// État d'un groupe (une livraison) : son stock n'est crédité qu'à RECEIVED.
+enum ShipmentGroupStatus {
+  DRAFT
+  RECEIVED
 }
 
 /// Origine d'une vente. `ONLINE` = commande passée depuis le site,
@@ -596,10 +605,10 @@ model CampaignProduct {
 
 // ─── Gestion : arrivages (cargo) ─────────────────────────────────────────────
 
-/// Ce que le cargo livre : la liste des produits reçus (A1, A2…).
+/// Un arrivage (A1, A2…) : ce qui a été commandé au fournisseur.
 ///
-/// L'arrivage ne porte pas de transport : ses produits sont répartis ensuite
-/// dans des groupes (G1, G2…), chacun avec son propre coût de transport.
+/// La marchandise n'arrive pas forcément d'un bloc : chaque livraison forme
+/// un groupe (G1, G2…), et l'arrivage est complet quand tout est reçu.
 model Shipment {
   id         String         @id @default(cuid())
   code       String         @unique
@@ -610,6 +619,7 @@ model Shipment {
   /// remplacer : un même arrivage se partage parfois entre boutiques.
   storeId    String?
   orderedAt  DateTime?
+  /// Date de la dernière livraison réceptionnée.
   receivedAt DateTime?
   notes      String?        @db.Text
   createdAt  DateTime       @default(now())
@@ -624,68 +634,85 @@ model Shipment {
   @@map("shipments")
 }
 
-/// Groupe de cargo (G1, G2…), formé à partir des produits d'un arrivage.
-///
-/// C'est le « groupe » du suivi Excel : son transport est réparti à l'unité
-/// sur les seuls articles du groupe, ce qui donne le vrai coût de revient —
-/// celui que le fichier Excel oubliait dans ses marges.
-model ShipmentGroup {
-  id           String   @id @default(cuid())
-  shipmentId   String
-  code         String   @unique
-  label        String?
-  shippingCost Decimal  @default(0) @db.Decimal(12, 2)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  shipment Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  items    ShipmentItem[]
-
-  @@index([shipmentId])
-  @@map("shipment_groups")
-}
-
-/// Une ligne de produit reçue dans un arrivage.
-///
-/// `unitShipping` et `landedCost` sont vides tant que l'arrivage est en
-/// brouillon, puis figés à la réception : recalculer le coût de revient a
-/// posteriori réécrirait la marge de ventes déjà enregistrées.
+/// Une ligne commandée dans un arrivage : produit, quantité, prix d'achat.
 model ShipmentItem {
   id           String   @id @default(cuid())
   shipmentId   String
-  /// Groupe de cargo de l'article. Vide tant qu'il n'est pas réparti ;
-  /// obligatoire pour réceptionner.
-  groupId      String?
   productId    String
-  /// Boutique créditée à la réception. Reprise du lot par défaut, modifiable
-  /// ligne par ligne quand l'arrivage se partage.
+  /// Boutique créditée à chaque réception. Reprise du lot par défaut,
+  /// modifiable ligne par ligne quand l'arrivage se partage.
   storeId      String
+  /// Quantité commandée.
   quantity     Int
   /// Prix d'achat unitaire, hors transport.
   unitCost     Decimal  @db.Decimal(12, 2)
   /// Prix de vente envisagé à la commande. Purement indicatif : il ne modifie
   /// jamais le prix affiché en boutique, qui reste piloté depuis Produits.
   plannedPrice Decimal? @db.Decimal(12, 2)
-  /// Quote-part de transport, figée à la réception.
-  unitShipping Decimal? @db.Decimal(12, 2)
-  /// Coût de revient unitaire figé à la réception (achat + transport).
-  landedCost   Decimal? @db.Decimal(12, 2)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  shipment Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  group    ShipmentGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  product  Product        @relation(fields: [productId], references: [id])
-  store    Store          @relation(fields: [storeId], references: [id])
+  shipment Shipment            @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  product  Product             @relation(fields: [productId], references: [id])
+  store    Store               @relation(fields: [storeId], references: [id])
+  receipts ShipmentGroupItem[]
 
   /// Un produit n'apparaît qu'une fois par arrivage **et par boutique** : deux
   /// lignes identiques fausseraient le suivi, mais 6 tables à la Palmeraie et
   /// 4 à Cocody dans le même lot sont deux lignes légitimes.
   @@unique([shipmentId, productId, storeId])
-  @@index([groupId])
   @@index([productId])
   @@index([storeId])
   @@map("shipment_items")
+}
+
+/// Un groupe (G1, G2…) : une livraison partielle d'un arrivage.
+///
+/// C'est le « groupe » du suivi Excel : son transport est réparti à l'unité
+/// sur les seuls articles livrés, ce qui donne le vrai coût de revient —
+/// celui que le fichier Excel oubliait dans ses marges.
+model ShipmentGroup {
+  id           String              @id @default(cuid())
+  shipmentId   String
+  code         String              @unique
+  label        String?
+  shippingCost Decimal             @default(0) @db.Decimal(12, 2)
+  status       ShipmentGroupStatus @default(DRAFT)
+  receivedAt   DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  shipment Shipment            @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  items    ShipmentGroupItem[]
+
+  @@index([shipmentId])
+  @@index([status, receivedAt])
+  @@map("shipment_groups")
+}
+
+/// Quantité d'une ligne commandée livrée dans un groupe.
+///
+/// `unitShipping` et `landedCost` sont vides tant que le groupe est en
+/// brouillon, puis figés à la réception : recalculer le coût de revient a
+/// posteriori réécrirait la marge de ventes déjà enregistrées.
+model ShipmentGroupItem {
+  id             String   @id @default(cuid())
+  groupId        String
+  shipmentItemId String
+  quantity       Int
+  /// Quote-part de transport, figée à la réception.
+  unitShipping   Decimal? @db.Decimal(12, 2)
+  /// Coût de revient unitaire figé à la réception (achat + transport).
+  landedCost     Decimal? @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  group        ShipmentGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  shipmentItem ShipmentItem  @relation(fields: [shipmentItemId], references: [id])
+
+  @@unique([groupId, shipmentItemId])
+  @@index([shipmentItemId])
+  @@map("shipment_group_items")
 }
 
 // ─── Gestion : historique des prix ───────────────────────────────────────────

@@ -14,7 +14,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "admin:create": "tsx scripts/create-admin.ts",
     "gestion:init": "tsx scripts/seed-stores.ts",
-    "gestion:demo": "tsx scripts/seed-gestion-demo.ts"
+    "gestion:demo": "tsx scripts/seed-gestion-demo.ts",
+    "preorders:demo": "tsx scripts/seed-preorders-demo.ts"
   },
   "keywords": [],
   "author": "",
