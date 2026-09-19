@@ -4,6 +4,7 @@ import financeRouter from './finance.router.js'
 import reportsRouter from './reports.router.js'
 import salesRouter from './sales.router.js'
 import shipmentsRouter from './shipments.router.js'
+import shipmentGroupsRouter from './shipment-groups.router.js'
 import transfersRouter from './transfers.router.js'
 import * as storesService from './stores.service.js'
 import * as customersService from './customers.service.js'
@@ -45,6 +46,7 @@ router.use('/sales', salesRouter)
 // ─── Arrivages ───────────────────────────────────────────────────────────────
 // Sous-routeur : il porte ses propres droits (jamais le comptoir).
 router.use('/shipments', shipmentsRouter)
+router.use('/shipment-groups', shipmentGroupsRouter)
 
 // ─── Transferts entre boutiques ──────────────────────────────────────────────
 router.use('/transfers', transfersRouter)

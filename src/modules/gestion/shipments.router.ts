@@ -2,11 +2,9 @@ import { Router } from 'express'
 import { authenticate, requireRole } from '../../middlewares/auth.js'
 import * as service from './shipments.service.js'
 import {
-  CreateShipmentGroupSchema,
   CreateShipmentItemSchema,
   CreateShipmentSchema,
   ShipmentQuerySchema,
-  UpdateShipmentGroupSchema,
   UpdateShipmentItemSchema,
   UpdateShipmentSchema,
 } from './shipments.types.js'
@@ -99,54 +97,21 @@ router.delete('/:id/items/:itemId', async (req, res, next) => {
   }
 })
 
-// ─── Groupes de l'arrivage ───────────────────────────────────────────────────
-
-router.post('/:id/groups', async (req, res, next) => {
-  try {
-    const input = CreateShipmentGroupSchema.parse(req.body)
-    const shipment = await service.createGroup(String(req.params.id), input)
-    res.status(201).json({ success: true, data: shipment })
-  } catch (err) {
-    next(err)
-  }
-})
-
-router.patch('/:id/groups/:groupId', async (req, res, next) => {
-  try {
-    const input = UpdateShipmentGroupSchema.parse(req.body)
-    const shipment = await service.updateGroup(
-      String(req.params.id),
-      String(req.params.groupId),
-      input,
-    )
-    res.json({ success: true, data: shipment })
-  } catch (err) {
-    next(err)
-  }
-})
-
-router.delete('/:id/groups/:groupId', async (req, res, next) => {
-  try {
-    const shipment = await service.removeGroup(String(req.params.id), String(req.params.groupId))
-    res.json({ success: true, data: shipment })
-  } catch (err) {
-    next(err)
-  }
-})
-
 // ─── Cycle de vie ────────────────────────────────────────────────────────────
 
-router.post('/:id/receive', async (req, res, next) => {
-  try {
-    res.json({ success: true, data: await service.receiveShipment(String(req.params.id)) })
-  } catch (err) {
-    next(err)
-  }
-})
+// La réception se fait par livraison : voir /gestion/shipment-groups/:id/receive.
 
 router.post('/:id/cancel', async (req, res, next) => {
   try {
     res.json({ success: true, data: await service.cancelShipment(String(req.params.id)) })
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.post('/:id/close', async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await service.closeShipment(String(req.params.id)) })
   } catch (err) {
     next(err)
   }

@@ -66,10 +66,10 @@ export async function stockReport(): Promise<StockReport> {
       select: { id: true, name: true, sku: true, stock: true, costPrice: true, lowStockAlert: true },
       orderBy: { name: 'asc' },
     }),
-    prisma.shipmentItem.groupBy({
-      by: ['productId'],
-      where: { shipment: { status: 'RECEIVED' } },
-      _sum: { quantity: true },
+    // Reçu = livraisons réceptionnées, y compris celles d'un arrivage partiel.
+    prisma.shipmentGroupItem.findMany({
+      where: { group: { status: 'RECEIVED' } },
+      select: { quantity: true, shipmentItem: { select: { productId: true } } },
     }),
     prisma.orderItem.groupBy({
       by: ['productId'],
@@ -83,7 +83,11 @@ export async function stockReport(): Promise<StockReport> {
     }),
   ])
 
-  const receivedBy = new Map(received.map((r) => [r.productId, r._sum.quantity ?? 0]))
+  const receivedBy = new Map<string, number>()
+  for (const r of received) {
+    const productId = r.shipmentItem.productId
+    receivedBy.set(productId, (receivedBy.get(productId) ?? 0) + r.quantity)
+  }
   const soldBy = new Map(
     sold.map((r) => [r.productId, { qty: r._sum.quantity ?? 0, revenue: num(r._sum.total) }]),
   )
