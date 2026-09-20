@@ -44,8 +44,9 @@ export interface StockReport {
  * alertes, sans rien stocker.
  *
  * Différence assumée avec le fichier Excel : la marge part du coût de revient
- * (`Product.costPrice`, transport inclus, écrit à la réception des arrivages)
- * et non du seul prix d'achat. Les marges sont donc plus basses — et justes.
+ * (`Product.costPrice`, transport et douane inclus, écrit à la réception des
+ * arrivages) et non du seul prix d'achat. Les marges sont donc plus basses —
+ * et justes.
  */
 export async function stockReport(): Promise<StockReport> {
   const since30 = new Date()

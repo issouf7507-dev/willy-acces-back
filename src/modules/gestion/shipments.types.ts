@@ -14,6 +14,11 @@ const shipmentFields = {
   label: z.string().max(120),
   /** Boutique par défaut du lot ; chaque ligne peut la remplacer. */
   storeId: z.string().nullable(),
+  /**
+   * Douane annoncée pour le lot entier. Prévisionnelle : le coût de revient
+   * n'utilise que la douane saisie sur chaque groupe, à la réception.
+   */
+  customsCost: z.number().min(0),
   orderedAt: z.iso.datetime(),
   notes: z.string().max(2000),
 }
@@ -23,6 +28,7 @@ export const CreateShipmentSchema = z.object({
   code: shipmentFields.code.optional(),
   label: shipmentFields.label.optional(),
   storeId: shipmentFields.storeId.optional(),
+  customsCost: shipmentFields.customsCost.optional(),
   orderedAt: shipmentFields.orderedAt.optional(),
   notes: shipmentFields.notes.optional(),
 })
@@ -73,6 +79,8 @@ const groupFields = {
   code,
   label: z.string().max(120),
   shippingCost: z.number().min(0),
+  /** Douane payée sur cette livraison, répartie comme le transport. */
+  customsCost: z.number().min(0),
   /** Remplace l'ensemble des lignes livrées du groupe. */
   items: z.array(groupLine).min(1),
 }
@@ -83,6 +91,7 @@ export const CreateShipmentGroupSchema = z.object({
   code: groupFields.code.optional(),
   label: groupFields.label.optional(),
   shippingCost: groupFields.shippingCost.default(0),
+  customsCost: groupFields.customsCost.default(0),
   items: groupFields.items,
 })
 

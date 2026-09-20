@@ -27,6 +27,7 @@ const SHIPMENT_INCLUDE = {
       label: true,
       status: true,
       shippingCost: true,
+      customsCost: true,
       receivedAt: true,
       items: { select: { shipmentItemId: true, quantity: true } },
     },

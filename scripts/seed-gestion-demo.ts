@@ -161,6 +161,8 @@ async function seed() {
     label: 'Lot cargo — démonstration',
     storeId: palmeraie.id,
     orderedAt: daysAgo(45).toISOString(),
+    // Douane annoncée pour le lot entier, à la commande.
+    customsCost: 45000,
   })
   snap.shipmentIds.push(g1.id)
   await shipments.addItem(g1.id, { productId: main.id, quantity: 100, unitCost: 2000, plannedPrice: 6500 })
@@ -172,16 +174,22 @@ async function seed() {
   const delivery = await shipmentGroups.createGroup({
     shipmentId: g1.id,
     shippingCost: 90000,
+    // Douane réellement payée au dédouanement de cette livraison.
+    customsCost: 45000,
     items: g1Lines.items.map((i) => ({ shipmentItemId: i.id, quantity: i.quantity })),
   })
   snap.inventoryRefs.push(delivery.code)
   await shipmentGroups.receiveGroup(delivery.id)
-  console.log(`✅ Arrivage ${g1.code} reçu (groupe ${delivery.code}) — 180 articles, transport réparti à 500 F/unité`)
+  console.log(
+    `✅ Arrivage ${g1.code} reçu (groupe ${delivery.code}) — 180 articles, ` +
+      'transport à 500 F/unité et douane à 250 F/unité',
+  )
 
   // ── Arrivage encore en brouillon, pour montrer l'autre état de l'écran ────
   const g2 = await shipments.createShipment({
     label: 'Prochain envoi — démonstration',
     storeId: marcory.id,
+    customsCost: 15000,
   })
   snap.shipmentIds.push(g2.id)
   const g2Lines = await shipments.addItem(g2.id, { productId: main.id, quantity: 50, unitCost: 2100, plannedPrice: 6900 })
@@ -189,6 +197,7 @@ async function seed() {
   await shipmentGroups.createGroup({
     shipmentId: g2.id,
     shippingCost: 30000,
+    customsCost: 6000,
     items: [{ shipmentItemId: g2Lines.items[0].id, quantity: 20 }],
   })
   console.log(`✅ Arrivage ${g2.code} en attente, une livraison de 20 sur 50 en brouillon`)

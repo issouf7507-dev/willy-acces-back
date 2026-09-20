@@ -147,8 +147,8 @@ export async function removeGroup(id: string) {
  * livraisons réceptionnées.
  *
  * C'est ce chiffre qui corrige l'erreur du fichier Excel, dont la marge se
- * basait sur le seul prix d'achat et ignorait le transport — elle était donc
- * systématiquement surévaluée.
+ * basait sur le seul prix d'achat et ignorait le transport comme la douane —
+ * elle était donc systématiquement surévaluée.
  */
 async function recomputeCostPrice(tx: Prisma.TransactionClient, productId: string) {
   const lines = await tx.shipmentGroupItem.findMany({
@@ -169,9 +169,10 @@ async function recomputeCostPrice(tx: Prisma.TransactionClient, productId: strin
 /**
  * Réceptionne une livraison. C'est l'unique moment où elle touche au stock :
  *
- *  1. le transport du groupe est réparti à l'unité sur les articles livrés,
- *     exactement comme dans le suivi Excel ;
- *  2. le coût de revient (achat + transport) est figé sur chaque ligne ;
+ *  1. le transport et la douane du groupe sont répartis à l'unité sur les
+ *     articles livrés, exactement comme dans le suivi Excel ;
+ *  2. le coût de revient (achat + transport + douane) est figé sur chaque
+ *     ligne ;
  *  3. le stock des produits est incrémenté, avec un mouvement RESTOCK qui
  *     laisse une piste d'audit ;
  *  4. l'arrivage passe partiel ou complet, et le coût de revient moyen des
@@ -188,19 +189,23 @@ export async function receiveGroup(id: string) {
   }
 
   const totalQty = group.items.reduce((sum, l) => sum + l.quantity, 0)
-  // Répartition à l'unité, comme dans le classeur : le transport du groupe
-  // divisé par le nombre d'articles livrés, quelle que soit leur valeur.
+  // Répartition à l'unité, comme dans le classeur : les frais du groupe
+  // divisés par le nombre d'articles livrés, quelle que soit leur valeur.
+  // La douane est celle payée sur cette livraison, pas celle annoncée pour
+  // le lot entier (`shipment.customsCost`), qui reste prévisionnelle.
   const unitShipping = num(group.shippingCost) / totalQty
+  const unitCustoms = num(group.customsCost) / totalQty
 
   await prisma.$transaction(async (tx) => {
     for (const line of group.items) {
       const item = line.shipmentItem
-      const landedCost = num(item.unitCost) + unitShipping
+      const landedCost = num(item.unitCost) + unitShipping + unitCustoms
 
       await tx.shipmentGroupItem.update({
         where: { id: line.id },
         data: {
           unitShipping: new Prisma.Decimal(unitShipping.toFixed(2)),
+          unitCustoms: new Prisma.Decimal(unitCustoms.toFixed(2)),
           landedCost: new Prisma.Decimal(landedCost.toFixed(2)),
         },
       })
