@@ -610,20 +610,24 @@ model CampaignProduct {
 /// La marchandise n'arrive pas forcément d'un bloc : chaque livraison forme
 /// un groupe (G1, G2…), et l'arrivage est complet quand tout est reçu.
 model Shipment {
-  id         String         @id @default(cuid())
-  code       String         @unique
-  label      String?
-  currency   String         @default("FCFA")
-  status     ShipmentStatus @default(DRAFT)
+  id          String         @id @default(cuid())
+  code        String         @unique
+  label       String?
+  currency    String         @default("FCFA")
+  /// Douane annoncée pour l'arrivage entier, saisie à la commande avec les
+  /// produits. Prévisionnelle : seule la douane réellement payée sur chaque
+  /// groupe entre dans le coût de revient, à la réception.
+  customsCost Decimal        @default(0) @db.Decimal(12, 2)
+  status      ShipmentStatus @default(DRAFT)
   /// Boutique vers laquelle part le lot par défaut. Chaque ligne peut la
   /// remplacer : un même arrivage se partage parfois entre boutiques.
-  storeId    String?
-  orderedAt  DateTime?
+  storeId     String?
+  orderedAt   DateTime?
   /// Date de la dernière livraison réceptionnée.
-  receivedAt DateTime?
-  notes      String?        @db.Text
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  receivedAt  DateTime?
+  notes       String?        @db.Text
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
   items  ShipmentItem[]
   groups ShipmentGroup[]
@@ -668,15 +672,19 @@ model ShipmentItem {
 
 /// Un groupe (G1, G2…) : une livraison partielle d'un arrivage.
 ///
-/// C'est le « groupe » du suivi Excel : son transport est réparti à l'unité
-/// sur les seuls articles livrés, ce qui donne le vrai coût de revient —
-/// celui que le fichier Excel oubliait dans ses marges.
+/// C'est le « groupe » du suivi Excel : son transport et sa douane sont
+/// répartis à l'unité sur les seuls articles livrés, ce qui donne le vrai coût
+/// de revient — celui que le fichier Excel oubliait dans ses marges.
 model ShipmentGroup {
   id           String              @id @default(cuid())
   shipmentId   String
   code         String              @unique
   label        String?
   shippingCost Decimal             @default(0) @db.Decimal(12, 2)
+  /// Douane payée pour ce qui est arrivé dans ce groupe. Répartie à l'unité
+  /// comme le transport : c'est le dédouanement de cette livraison-là, pas
+  /// celui du lot entier.
+  customsCost  Decimal             @default(0) @db.Decimal(12, 2)
   status       ShipmentGroupStatus @default(DRAFT)
   receivedAt   DateTime?
   createdAt    DateTime            @default(now())
@@ -692,8 +700,8 @@ model ShipmentGroup {
 
 /// Quantité d'une ligne commandée livrée dans un groupe.
 ///
-/// `unitShipping` et `landedCost` sont vides tant que le groupe est en
-/// brouillon, puis figés à la réception : recalculer le coût de revient a
+/// `unitShipping`, `unitCustoms` et `landedCost` sont vides tant que le groupe
+/// est en brouillon, puis figés à la réception : recalculer le coût de revient a
 /// posteriori réécrirait la marge de ventes déjà enregistrées.
 model ShipmentGroupItem {
   id             String   @id @default(cuid())
@@ -702,7 +710,9 @@ model ShipmentGroupItem {
   quantity       Int
   /// Quote-part de transport, figée à la réception.
   unitShipping   Decimal? @db.Decimal(12, 2)
-  /// Coût de revient unitaire figé à la réception (achat + transport).
+  /// Quote-part de douane, figée à la réception.
+  unitCustoms    Decimal? @db.Decimal(12, 2)
+  /// Coût de revient unitaire figé à la réception (achat + transport + douane).
   landedCost     Decimal? @db.Decimal(12, 2)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
